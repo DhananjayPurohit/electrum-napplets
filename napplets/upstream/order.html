@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizza · mcp.cashu.exchange</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1d212a;--border:#2a2f3a;--text:#e6e9ef;
+    --muted:#9aa3b2;--accent:#f7931a;--ok:#34d399;--err:#f87171;--warn:#fbbf24}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,sans-serif}
+  body{display:flex;flex-direction:column;max-width:520px;margin:0 auto;
+    border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .bar{display:flex;justify-content:space-between;padding:8px 16px 0;font-size:11px;color:var(--muted)}
+  .appbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .appbar h1{font-size:15px;margin:0}.appbar h1 b{color:var(--accent)}
+  .appbar .wallet{margin-left:auto;font-size:12px;color:var(--accent);border:1px solid var(--accent);
+    border-radius:999px;padding:3px 9px;white-space:nowrap}
+  .stepper{display:flex;gap:6px;padding:10px 16px 0}
+  .stepper i{flex:1;height:3px;border-radius:2px;background:var(--border)}
+  .stepper i.on{background:var(--accent)}.stepper i.done{background:var(--ok)}
+  main{flex:1;overflow-y:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px}
+  h2{font-size:17px;margin:0}
+  h3{font-size:12px;margin:0;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+  p{margin:0;font-size:13px;line-height:1.45;color:var(--muted)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .row{display:flex;align-items:center;gap:10px}
+  .grow{flex:1;min-width:0}
+  .title{font-size:14px;font-weight:600}
+  .sub{font-size:11.5px;color:var(--muted)}
+  .sats{color:var(--accent);font-weight:700;font-variant-numeric:tabular-nums}
+  .pill{font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);
+    color:var(--muted);white-space:nowrap;display:inline-block}
+  .pill.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
+  .pill.no{color:var(--err);border-color:rgba(248,113,113,.45)}
+  .pill.ac{color:var(--accent);border-color:rgba(247,147,26,.45)}
+  .thumb{width:44px;height:44px;border-radius:10px;flex:none;background:linear-gradient(135deg,#3a2a12,#7a4a12);
+    display:grid;place-items:center;font-size:21px}
+  button{font:inherit;border:0;border-radius:10px;padding:11px 14px;background:var(--accent);color:#111;
+    font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--border);font-weight:600}
+  button.wide{width:100%}
+  button:disabled{opacity:.45;cursor:default}
+  .cta{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:4px 0}
+  .kv+.kv{border-top:1px dashed var(--border)}
+  .kv span:first-child{color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:var(--muted);word-break:break-all}
+  .checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+  .checks li{display:flex;gap:8px;font-size:12.5px;align-items:flex-start}
+  .checks .mk{color:var(--ok);flex:none;font-weight:700}
+  .checks .mk.no{color:var(--err)}
+  .banner{border-radius:12px;padding:12px;font-size:13px}
+  .banner.ok{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.45);color:var(--ok);font-weight:700}
+  .banner.err{background:rgba(248,113,113,.13);border:1px solid rgba(248,113,113,.45)}
+  .big{font-size:25px;font-weight:800}
+  .center{text-align:center}
+  .ring{display:flex;gap:6px;flex-wrap:wrap}
+  .ring i{width:32px;height:32px;border-radius:9px;background:var(--panel2);border:1px solid var(--border);
+    display:grid;place-items:center;font-size:11px;font-style:normal;color:var(--muted)}
+  .ring i.you{border-color:var(--accent);color:var(--accent);font-weight:700}
+  .note{font-size:11px;color:var(--muted);font-style:italic}
+  .step{display:flex;gap:12px;font-size:12.5px}
+  .step .rail{display:flex;flex-direction:column;align-items:center;width:12px}
+  .step .dot{width:10px;height:10px;border-radius:50%;margin-top:5px;flex:none;background:var(--border)}
+  .step.done .dot{background:var(--ok)}
+  .step.now .dot{background:var(--accent);box-shadow:0 0 0 4px rgba(247,147,26,.22)}
+  .step .line{width:1px;background:var(--border);flex:1;margin:4px auto}
+  .step:last-child .rail .line{display:none}
+  .step .body{padding-bottom:14px;flex:1}
+  .step .body b{font-weight:600;color:var(--muted)}
+  .step.done .body b,.step.now .body b{color:var(--text)}
+  .addr{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 10px;
+    font-family:ui-monospace,monospace;font-size:11px;color:var(--accent);word-break:break-all}
+  .sim{background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.45);color:var(--warn);
+    border-radius:10px;padding:8px 10px;font-size:11.5px}
+  .hide{display:none!important}
+  .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--border);
+    border-top-color:var(--accent);border-radius:50%;animation:s .8s linear infinite;vertical-align:-1px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  .attack{display:flex;flex-direction:column;gap:6px}
+  .attack button{background:transparent;border:1px solid var(--border);color:var(--muted);
+    font-size:11.5px;padding:7px 10px;font-weight:600}
+</style>
+</head>
+<body>
+  <div class="bar"><span id="clock">14:07</span><span>Berlin · demo</span></div>
+  <div class="appbar">
+    <h1><b>mcp</b>.cashu.exchange <span class="sub">/pizza</span></h1>
+    <span class="wallet">21,400 sats</span>
+  </div>
+  <div class="stepper" id="stepper"></div>
+
+  <main>
+    <!-- 1 DISCOVER -->
+    <section data-screen="discover">
+      <h2>Pizza in Berlin</h2>
+      <p style="margin-top:6px">Delivered by facilitators you choose — and can verify.</p>
+      <div class="card row" data-pz="napoli" style="margin-top:12px">
+        <div class="thumb">&#127829;</div>
+        <div class="grow"><div class="title">Pizzeria Napoli</div>
+          <div class="sub">Kreuzberg · &#9733; 4.8 · 25–35 min</div></div>
+        <div style="text-align:right"><span class="pill ok" id="vetted-count">8 vetted</span>
+          <div class="sub" style="margin-top:4px">from 10,900</div></div>
+      </div>
+      <div class="card row" style="opacity:.55;margin-top:8px">
+        <div class="thumb">&#127829;</div>
+        <div class="grow"><div class="title">Trattoria Sole</div>
+          <div class="sub">Mitte · &#9733; 4.6 · 30–40 min</div></div>
+        <div class="sub">closed</div>
+      </div>
+      <div class="cta" style="margin-top:14px"><button class="wide" id="go-menu">Order from Napoli</button></div>
+    </section>
+
+    <!-- 2 MENU -->
+    <section data-screen="menu" class="hide">
+      <h2>Pizzeria Napoli</h2>
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+        <div class="card row" data-item="margherita"><div class="grow">
+          <div class="title">Margherita</div><div class="sub">San Marzano, fior di latte, basil</div></div>
+          <div class="sats">12,500</div></div>
+        <div class="card row" data-item="quattro"><div class="grow">
+          <div class="title">Quattro Formaggi</div><div class="sub">Gorgonzola, taleggio, pecorino, mozzarella</div></div>
+          <div class="sats">15,400</div></div>
+        <div class="card row" data-item="diavola"><div class="grow">
+          <div class="title">Diavola</div><div class="sub">Spianata piccante, chilli honey</div></div>
+          <div class="sats">14,900</div></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="kv"><span>Basket</span><span id="basket-line">1 × Margherita</span></div>
+        <div class="kv"><span>Total</span><span class="sats" id="basket-total">12,500 sats</span></div>
+        <div class="kv"><span>Delivery</span><span>Kreuzberg · 10999</span></div>
+      </div>
+      <div class="cta"><button class="wide" id="go-choose">Checkout</button></div>
+    </section>
+
+    <!-- 3 CHOOSE FACILITATOR -->
+    <section data-screen="choose" class="hide">
+      <h2>Who fulfils it?</h2>
+      <p style="margin-top:6px">Napoli makes the pizza. A <b style="color:var(--text)">facilitator</b>
+        carries it and settles the sats. You only pay a facilitator who can prove they are in your trust set.</p>
+      <div id="fac-list" style="margin-top:12px;display:flex;flex-direction:column;gap:8px"></div>
+      <div class="card" style="background:var(--panel2)">
+        <h3>Your pinned trust set</h3>
+        <div class="kv"><span>List</span><span id="pin-setid">—</span></div>
+        <div class="kv"><span>Members</span><span id="pin-count">—</span></div>
+        <div class="kv"><span>Published</span><span id="pin-published">—</span></div>
+        <div class="kv"><span>Version hash</span><span class="mono" id="pin-hash">—</span></div>
+      </div>
+      <div class="cta"><button class="wide" id="go-vet" disabled>Continue — verify facilitator</button></div>
+    </section>
+
+    <!-- 4 VETTING -->
+    <section data-screen="vetting" class="hide">
+      <h2 id="vet-head">Verifying the facilitator</h2>
+      <div id="vet-wait" class="card center"><span class="spin"></span>
+        <p style="margin-top:8px">Waiting for the facilitator to prove membership…</p></div>
+
+      <div id="vet-result" class="hide" style="display:flex;flex-direction:column;gap:12px">
+        <div id="vet-banner" class="banner ok center"></div>
+        <div class="card"><h3>Pinned trust set</h3>
+          <div class="kv"><span>List</span><span id="vet-setid">—</span></div>
+          <div class="kv"><span>Members</span><span id="vet-count">—</span></div>
+          <div class="kv"><span>Version hash</span><span class="mono" id="vet-hash">—</span></div>
+        </div>
+        <div class="card"><h3>What was checked</h3><ul class="checks" id="vet-checks"></ul></div>
+        <div class="card"><h3>Anonymity</h3>
+          <div class="ring" id="vet-ring"></div>
+          <p id="vet-anon" style="margin-top:8px"></p></div>
+        <div class="card"><h3>Try to cheat (live)</h3>
+          <div class="attack">
+            <button id="atk-replay">Replay this proof for a different order</button>
+            <button id="atk-reuse">Reuse the same key image</button>
+          </div>
+          <p class="mono" id="atk-out" style="margin-top:8px"></p></div>
+      </div>
+      <div class="cta">
+        <button class="wide" id="go-pay" disabled>Continue to bitcoin payment</button>
+        <button class="wide ghost hide" id="retry">Pick a vetted facilitator instead</button>
+      </div>
+    </section>
+
+    <!-- 5 PAY — real Cashu mint quote, no theatre -->
+    <section data-screen="pay" class="hide">
+      <h2>Pay with bitcoin</h2>
+      <div class="card center" style="margin-top:12px">
+        <div class="big sats" id="pay-amount">—</div>
+        <div class="sub" id="pay-order">—</div>
+      </div>
+      <div id="pay-gate" class="card"><span class="spin"></span>
+        <p style="margin-top:8px">Requesting a real invoice from the mint…</p></div>
+      <div id="pay-live" class="hide" style="display:flex;flex-direction:column;gap:12px">
+        <div class="card">
+          <h3>Invoice from the mint</h3>
+          <div class="kv"><span>Mint</span><span class="mono" id="pay-mint">—</span></div>
+          <div class="kv"><span>Network</span><span id="pay-net">—</span></div>
+          <div class="kv"><span>Quote</span><span class="mono" id="pay-quote">—</span></div>
+          <div class="kv"><span>Expires</span><span id="pay-expiry">—</span></div>
+          <div class="kv"><span>Mint state</span><span class="pill ac" id="pay-state">—</span></div>
+        </div>
+        <div class="card"><h3>BOLT11</h3>
+          <div class="addr" id="pay-invoice">—</div>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <button class="ghost" id="pay-copy" style="flex:1">Copy invoice</button>
+            <button class="ghost" id="pay-recheck" style="flex:1">Check mint now</button>
+          </div>
+        </div>
+        <p class="note">This is a real, payable signet invoice issued by the mint the
+          worker already settles against (<span class="mono">cdk-a056e0f.cashu.exchange</span>).
+          Nothing is simulated: the mint's own state machine is what the badge above reads.
+          No sats move until somebody pays it — the demo holds no signet funds, so the
+          paid → issued path is real code you can exercise by paying the invoice.</p>
+      </div>
+      <div id="pay-refused" class="hide banner err"></div>
+      <div class="cta"><button class="wide hide" id="pay-confirm">I have paid — issue ecash</button></div>
+    </section>
+
+    <!-- 6 TRACK -->
+    <section data-screen="track" class="hide">
+      <h2 id="track-head">Order —</h2>
+      <div class="card" style="margin-top:12px"><div id="timeline"></div></div>
+      <div class="card">
+        <div class="kv"><span>Facilitator</span><span id="track-fac">—</span></div>
+        <div class="kv"><span>Trust proof</span><span class="pill ok" id="track-proof">verified</span></div>
+        <div class="kv"><span>Anonymity set</span><span id="track-anon">—</span></div>
+      </div>
+      <p class="note">Honest limitation: the ring proof says who may settle the order,
+        not that the pizza arrives. Releasing sats on delivery — not on proof — is the
+        part that protects you. In this demo the release is simulated.</p>
+    </section>
+  </main>
+
+<script src="./trust-ring.bundle.js"></script>
+<script src="./cashu-paid-leg.bundle.js"></script>
+<script>
+(() => {
+  const T = window.__trustRing;
+  const CH = new BroadcastChannel("pizza-trust-demo");
+  const RING_SIZE = 4;
+  const DEMO_PREFIX = "mcp-cashu-pizza-demo/";
+  const $ = (s) => document.querySelector(s);
+  const hexToBytes = (h) => Uint8Array.from(h.match(/../g), (b) => parseInt(b, 16));
+  const short = (h, n = 10) => h.slice(0, n) + "…";
+
+  const ORDER = {
+    orderId: "PZ-4471",
+    amount: "27,900",
+    currency: "sats",
+    clientId: "buyer-alice",
+    expiresAt: new Date(Date.now() + 3600e3).toISOString(),
+  };
+  const BASKET = { margherita: { label: "Margherita", sats: 12500 }, quattro: { label: "Quattro Formaggi", sats: 15400 } };
+
+  // exposed for the e2e — every field is a real return value, never page text
+  const state = window.__buyer = {
+    screen: "discover", order: ORDER, pin: null, trustSet: null,
+    roster: null, chosen: null, proof: null, verdict: null,
+    checks: [], attacks: {}, anonymitySetSize: null, keyImage: null,
+    realQuote: null, gateReason: null, mintState: null, invoiceNetwork: null,
+    paymentConfirmed: false,
+    token: null, mintedTotal: 0, mintedProofs: 0, settleError: null,
+  };
+
+  const show = (name) => {
+    state.screen = name;
+    document.querySelectorAll("main > section").forEach((s) =>
+      s.classList.toggle("hide", s.dataset.screen !== name));
+    const order = ["discover", "menu", "choose", "vetting", "pay", "track"];
+    const at = order.indexOf(name);
+    $("#stepper").innerHTML = order.map((_, i) =>
+      `<i class="${i < at ? "done" : i === at ? "on" : ""}"></i>`).join("");
+    window.scrollTo(0, 0);
+  };
+
+  const setBasket = () => {
+    const items = Object.values(BASKET);
+    const total = items.reduce((a, b) => a + b.sats, 0);
+    $("#basket-line").textContent = items.map((i) => `1 × ${i.label}`).join(" + ");
+    $("#basket-total").textContent = total.toLocaleString("en-US") + " sats";
+    ORDER.amount = String(total);
+    $("#pay-amount").textContent = total.toLocaleString("en-US") + " sats";
+    $("#pay-order").textContent = `order #${ORDER.orderId}`;
+  };
+
+  // ── real trust set from the roster fixture ────────────────────────────────
+  async function loadRoster() {
+    const doc = await (await fetch("./facilitator-roster.json")).json();
+    state.roster = doc;
+    const trustSet = {
+      setId: doc.setId,
+      description: doc.description,
+      publishedAt: doc.publishedAt,
+      members: doc.members.map((m) => ({
+        publicKey: hexToBytes(m.pubkey),
+        label: m.label,
+        basis: m.basis,
+        tier: m.tier,
+        expiresAt: "2027-12-31T23:59:59Z",
+      })),
+    };
+    state.trustSet = trustSet;
+    state.pin = T.pinTrustSet(trustSet);
+    state.derivation = DEMO_PREFIX;
+    $("#pin-setid").textContent = trustSet.setId;
+    $("#pin-count").textContent = `${trustSet.members.length} · pinned by you`;
+    $("#pin-published").textContent = new Date(trustSet.publishedAt).toLocaleString("en-GB",
+      { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    $("#pin-hash").textContent = short(state.pin.contentHash, 8) + "…";
+    $("#vetted-count").textContent = `${trustSet.members.length} vetted`;
+    renderFacilitators();
+    gatedRail();   // build the money-path gate now, so it exists as soon as the page is ready
+  }
+
+  function renderFacilitators() {
+    const list = $("#fac-list");
+    const members = state.roster.members.slice(0, 3);
+    list.innerHTML = members.map((m, i) => `
+      <div class="card row" data-fac="${i}" style="cursor:pointer">
+        <div class="grow">
+          <div class="title">${m.label}</div>
+          <div class="sub">${m.deliveries} deliveries · ★ ${m.rating} · ${m.basis}</div>
+          <div style="margin-top:6px"><span class="pill ok">✓ in your trust set</span></div>
+        </div></div>`).join("") + `
+      <div class="card row" data-fac="outsider" style="cursor:pointer;opacity:.8">
+        <div class="grow">
+          <div class="title">Anon Delivery</div>
+          <div class="sub">new · no history</div>
+          <div style="margin-top:6px"><span class="pill no">not in your set — payment blocked</span></div>
+        </div></div>`;
+    list.querySelectorAll("[data-fac]").forEach((el) => el.addEventListener("click", () => {
+      state.chosen = el.dataset.fac;
+      list.querySelectorAll(".card").forEach((c) => c.style.borderColor = "var(--border)");
+      el.style.borderColor = "var(--accent)";
+      $("#go-vet").disabled = false;
+      $("#go-vet").textContent = `Continue — verify ${el.querySelector(".title").textContent}`;
+    }));
+  }
+
+  // ── vetting: the real policy decides ─────────────────────────────────────
+  function ringFor(idx, n) {
+    const out = [idx];
+    for (let step = 1; out.length < RING_SIZE; step++) {
+      const c = (idx + step * 2 - 1) % n;
+      if (!out.includes(c)) out.push(c);
+    }
+    return out;
+  }
+
+  async function startVetting() {
+    show("vetting");
+    $("#vet-result").classList.add("hide");
+    $("#vet-wait").classList.remove("hide");
+    $("#go-pay").disabled = true;
+    $("#retry").classList.add("hide");
+
+    const chosenIdx = state.chosen === "outsider" ? 0 : Number(state.chosen);
+    const ringIndices = ringFor(chosenIdx, state.trustSet.members.length);
+    CH.postMessage({
+      type: "ORDER",
+      order: { ...ORDER, pin: state.pin },
+      trustSet: state.trustSet,
+      pin: state.pin,
+      ringSize: RING_SIZE,
+      chosenIdx: state.chosen === "outsider" ? null : chosenIdx,
+      label: state.chosen === "outsider" ? "Anon Delivery" : state.roster.members[chosenIdx].label,
+      impostor: state.chosen === "outsider",
+      ringIndices,
+    });
+  }
+
+  async function onProof(msg) {
+    $("#vet-wait").classList.add("hide");
+    $("#vet-result").classList.remove("hide");
+    state.proof = msg.proof;
+    state.facilitator = msg.label;
+
+    const seen = T.createSeenSet();
+    state.seen = seen;
+    const result = T.verifyProof(msg.proof, state.trustSet, state.pin, seen);
+    state.verdict = result;
+
+    // each check is recomputed from the real proof + the real policy constants
+    const memberHex = new Set(state.trustSet.members.map((m) => T.toHex(m.publicKey)));
+    const ringHex = (msg.proof.ring || []).map((k) => T.toHex(k));
+    const contentHashNow = T.trustSetContentHash(state.trustSet);
+    const boundOrder = msg.proof.order || {};
+    const boundOk = boundOrder.orderId === ORDER.orderId && boundOrder.amount === ORDER.amount;
+    const freshOk = result.ok;
+
+    const checks = [
+      { label: "Set matches your pinned version hash", ok: contentHashNow === state.pin.contentHash },
+      { label: `Ring is a subset of your pinned set (${ringHex.length} of ${memberHex.size})`,
+        ok: ringHex.length > 0 && ringHex.every((k) => memberHex.has(k)) },
+      { label: `Ring size ${ringHex.length} ≥ minimum ${T.MIN_RING_SIZE}`, ok: ringHex.length >= T.MIN_RING_SIZE },
+      { label: `Proof binds this order — #${ORDER.orderId} · ${Number(ORDER.amount).toLocaleString("en-US")} sats`, ok: boundOk },
+      { label: "Not expired for this delivery window", ok: new Date(boundOrder.expiresAt || 0) > new Date() },
+      { label: "Key image fresh — not used for this order before", ok: freshOk },
+    ];
+    state.checks = checks;
+
+    const keyImage = msg.proof.signature ? T.toHex(msg.proof.signature.keyImage) : null;
+    state.keyImage = keyImage;
+    state.anonymitySetSize = result.anonymitySetSize ?? msg.proof.anonymitySetSize ?? null;
+
+    $("#vet-setid").textContent = state.trustSet.setId;
+    $("#vet-count").textContent = `${memberHex.size} · pinned by you`;
+    $("#vet-hash").textContent = short(state.pin.contentHash, 8) + "…";
+    $("#vet-checks").innerHTML = checks.map((c) =>
+      `<li><span class="mk ${c.ok ? "" : "no"}">${c.ok ? "✓" : "✗"}</span><span>${c.label}</span></li>`).join("");
+    $("#vet-ring").innerHTML = ringHex.map(() => "<i>?</i>").join("");
+    $("#vet-anon").innerHTML = result.ok
+      ? `Anonymity set = <b style="color:var(--text)">${state.anonymitySetSize}</b>. The ring proves one of
+         these signed; the signature does not say which. Key image
+         <span class="mono">${keyImage ? short(keyImage, 8) : "—"}</span> is one-use per order,
+         so the same proof cannot be replayed.`
+      : "";
+
+    if (result.ok) {
+      $("#vet-banner").className = "banner ok center";
+      $("#vet-banner").innerHTML = `VERIFIED — a member of your trust set signed this order.<br>
+        <span style="font-weight:600;font-size:12px;color:var(--text)">We did not learn <i>which</i> one.</span>`;
+      $("#go-pay").disabled = false;
+      $("#retry").classList.add("hide");
+    } else {
+      $("#vet-banner").className = "banner err";
+      $("#vet-banner").innerHTML = `<div style="font-weight:700;color:var(--err);font-size:15px">
+          Payment blocked — ${msg.label} could not prove membership in your trust set</div>
+        <p style="margin-top:6px;color:var(--text)">No valid proof, no order. Your sats did not move.</p>
+        <div class="mono" style="margin-top:8px">reason: ${result.reason}</div>`;
+      $("#go-pay").disabled = true;
+      $("#retry").classList.remove("hide");
+    }
+  }
+
+  // ── the two live attacks, asserted on the real verifier ──────────────────
+  function runReplay() {
+    const other = { ...ORDER, orderId: "PZ-9999", amount: "1" };
+    const replayed = { ...state.proof, order: { ...state.proof.order, orderId: other.orderId, amount: other.amount } };
+    const r = T.verifyProof(replayed, state.trustSet, state.pin, T.createSeenSet());
+    state.attacks.replay = { ok: r.ok, reason: r.reason };
+    $("#atk-out").textContent = `replay → ${r.ok ? "ACCEPTED (bad!)" : "REJECTED: " + r.reason}`;
+  }
+  function runReuse() {
+    const fresh = T.createSeenSet();
+    const first = T.verifyProof(state.proof, state.trustSet, state.pin, fresh);
+    const second = T.verifyProof(state.proof, state.trustSet, state.pin, fresh);
+    state.attacks.reuse = { first: first.ok, second: second.ok, reason: second.reason };
+    $("#atk-out").textContent =
+      `reuse → first ${first.ok ? "ACCEPTED" : "rejected"}, second ${second.ok ? "ACCEPTED (bad!)" : "REJECTED: " + second.reason}`;
+  }
+
+  // ── payment: a REAL mint quote, requested THROUGH the trust gate ─────────
+  // The invoice is not a string we invented. It is issued by the mint the worker
+  // already settles against (apps/worker/src/cashu-settle.ts), and the state
+  // badge reads that mint's own quote state machine. The quote is requested
+  // through withTrustGate, so the policy guards the MONEY path: no valid proof,
+  // no quote, no invoice, nothing payable.
+  // ?mint=<url> overrides for the demo: testnut auto-pays its own quotes, the signet
+  // zoo mint needs a real signet payment before the paid leg can run.
+  const MINT = new URLSearchParams(location.search).get("mint") || "https://cdk-a056e0f.cashu.exchange";
+  const MINT_IS_TEST = CashuPaidLeg.isTestMint(MINT);
+  let gate = null;
+  let pollTimer = null;
+
+  const cashuRail = {
+    id: "cashu-mint-signet",
+    kind: "cashu",
+    displayName: "Cashu mint (signet zoo)",
+    async quote(amount) {
+      const res = await fetch(`${MINT}/v1/mint/quote/bolt11`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ amount: Number(amount.amount), unit: "sat" }),
+      });
+      if (!res.ok) throw new Error(`mint refused the quote: HTTP ${res.status}`);
+      const q = await res.json();
+      state.realQuote = q;
+      return { railId: "cashu-mint-signet", kind: "cashu", amount, instructions: q.request };
+    },
+    async pay() {
+      return { status: "pending", reference: state.realQuote ? state.realQuote.quote : "none" };
+    },
+  };
+
+  function gatedRail() {
+    if (!gate) {
+      // the gate's own seen-set is the authoritative one-use register: the key
+      // image is spent when we ask the mint for money, not when we look at a proof
+      gate = T.withTrustGate(cashuRail, {
+        pin: state.pin, trustSet: state.trustSet, seen: T.createSeenSet(),
+      });
+      state.gate = gate;   // exposed so the e2e can assert on the money boundary
+    }
+    return gate;
+  }
+
+  function setMintState(s) {
+    state.mintState = s;
+    const el = $("#pay-state");
+    el.textContent = s;
+    el.className = "pill " + (s === "PAID" || s === "ISSUED" ? "ok" : "ac");
+  }
+
+  function renderInvoice(q) {
+    state.invoiceNetwork = q.request.startsWith("lntbs") ? "signet"
+      : q.request.startsWith("lnbcrt") ? "regtest"
+        : q.request.startsWith("lnbc") ? "mainnet" : "unknown";
+    $("#pay-invoice").textContent = q.request;
+    $("#pay-mint").textContent = MINT.replace("https://", "");
+    $("#pay-net").textContent = state.invoiceNetwork;
+    $("#pay-quote").textContent = q.quote;
+    $("#pay-expiry").textContent = new Date(q.expiry * 1000).toLocaleString("en-GB",
+      { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+    $("#pay-gate").classList.add("hide");
+    $("#pay-live").classList.remove("hide");
+    setMintState(q.state);
+  }
+
+  async function requestInvoice() {
+    $("#pay-refused").classList.add("hide");
+    $("#pay-gate").classList.remove("hide");
+    $("#pay-live").classList.add("hide");
+    try {
+      const quote = await gatedRail().quote({ amount: ORDER.amount, currency: "sats" }, state.proof);
+      state.gateReason = null;
+      renderInvoice(state.realQuote);
+      startPolling();
+      return quote;
+    } catch (err) {
+      state.realQuote = null;
+      state.gateReason = err.message || String(err);
+      $("#pay-gate").classList.add("hide");
+      const box = $("#pay-refused");
+      box.classList.remove("hide");
+      box.innerHTML = `<div style="font-weight:700;color:var(--err)">No invoice was created</div>
+        <p style="margin-top:6px;color:var(--text)">The trust gate refused before the rail
+        could ask the mint, so no quote exists and there is nothing to pay.</p>
+        <div class="mono" style="margin-top:8px">${state.gateReason}</div>`;
+      return null;
+    }
+  }
+
+  async function checkMint() {
+    const q = state.realQuote;
+    if (!q) return null;
+    const res = await fetch(`${MINT}/v1/mint/quote/bolt11/${q.quote}`);
+    if (!res.ok) return null;
+    const fresh = await res.json();
+    state.realQuote = fresh;
+    setMintState(fresh.state);
+    if (fresh.state === "PAID" || fresh.state === "ISSUED") {
+      state.paymentConfirmed = true;
+      CH.postMessage({ type: "PAID", orderId: ORDER.orderId });
+      settleEcash();
+      $("#track-head").textContent = `Order #${ORDER.orderId}`;
+      $("#track-fac").textContent = state.facilitator;
+      $("#track-anon").textContent = String(state.anonymitySetSize);
+      renderTimeline("paid");
+      stopPolling();
+      show("track");
+    }
+    return fresh;
+  }
+  function startPolling() { stopPolling(); pollTimer = setInterval(checkMint, 5000); }
+  function mintLegLine(text) {
+    let el = document.getElementById("mint-leg");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "mint-leg";
+      el.className = "mono";
+      const host = document.querySelector("#track") || document.body;
+      host.appendChild(el);
+    }
+    el.textContent = text;
+  }
+  /** PAID LEG (buyer half): mint the ecash for the paid quote, hand the token over. */
+  async function settleEcash() {
+    try {
+      mintLegLine("minting ecash…");
+      const minted = await CashuPaidLeg.mintEcash(MINT, ORDER.amount, state.realQuote.quote);
+      state.token = minted.token;
+      state.mintedTotal = minted.total;
+      state.mintedProofs = minted.proofCount;
+      CH.postMessage({ type: "TOKEN", orderId: ORDER.orderId, token: minted.token, total: minted.total });
+      mintLegLine(`${minted.total} sat ecash minted (${minted.proofCount} proofs) → handed to the facilitator`);
+    } catch (err) {
+      state.settleError = err.message || String(err);
+      mintLegLine(`minting failed: ${state.settleError}`);
+    }
+  }
+  function stopPolling() { if (pollTimer) { clearInterval(pollTimer); pollTimer = null; } }
+
+  const STEPS = ["Paid", "Facilitator accepted", "Making your pizza", "Out for delivery", "Delivered · sats released"];
+  function renderTimeline(stage) {
+    const at = { paid: 0, accepted: 1, preparing: 2, delivery: 3, delivered: 4 }[stage] ?? 0;
+    $("#timeline").innerHTML = STEPS.map((s, i) => `
+      <div class="step ${i < at ? "done" : i === at ? "now" : ""}">
+        <div class="rail"><div class="dot"></div><div class="line"></div></div>
+        <div class="body"><b>${s}</b></div></div>`).join("");
+  }
+
+  CH.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m.type === "PROOF") onProof(m);
+    if (m.type === "STATUS" && state.paymentConfirmed) renderTimeline(m.state);
+  });
+
+  $("#go-menu").addEventListener("click", () => show("menu"));
+  $("#go-choose").addEventListener("click", () => { setBasket(); show("choose"); });
+  $("#go-vet").addEventListener("click", startVetting);
+  $("#go-pay").addEventListener("click", async () => { show("pay"); await requestInvoice(); });
+  $("#pay-copy").addEventListener("click", () => {
+    navigator.clipboard.writeText($("#pay-invoice").textContent).catch(() => {});
+    $("#pay-copy").textContent = "Copied";
+  });
+  $("#pay-recheck").addEventListener("click", checkMint);
+  $("#retry").addEventListener("click", () => show("choose"));
+  $("#atk-replay").addEventListener("click", runReplay);
+  $("#atk-reuse").addEventListener("click", runReuse);
+
+  show("discover");
+  loadRoster().then(() => { state.ready = true; });
+})();
+</script>
+</body>
+</html>

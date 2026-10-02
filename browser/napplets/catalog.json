@@ -1,0 +1,30 @@
+{
+  "mint": "https://cdk-a056e0f.cashu.exchange",
+  "napplets": [
+    {
+      "dTag": "pizza-buyer",
+      "title": "Pizza order",
+      "file": "pizza-buyer.html",
+      "domains": [
+        "inc",
+        "wallet"
+      ],
+      "connect": [
+        "https://cdk-a056e0f.cashu.exchange",
+        "wss://cdk-a056e0f.cashu.exchange"
+      ]
+    },
+    {
+      "dTag": "pizza-facilitator",
+      "title": "Facilitator",
+      "file": "pizza-facilitator.html",
+      "domains": [
+        "inc"
+      ],
+      "connect": [
+        "https://cdk-a056e0f.cashu.exchange",
+        "wss://cdk-a056e0f.cashu.exchange"
+      ]
+    }
+  ]
+}

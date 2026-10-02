@@ -1,0 +1,10 @@
+{
+  "name": "browser",
+  "fullname": "Browser",
+  "description": "A Chromium browser inside your wallet. Websites can ask for Lightning payments (WebLN, lightning: links, L402) and you approve each one in Electrum.",
+  "author": "Electrum Browser hackathon team",
+  "available_for": ["qt"],
+  "icon": "icon.png",
+  "version": "0.1.0",
+  "min_electrum_version": "4.8.0"
+}

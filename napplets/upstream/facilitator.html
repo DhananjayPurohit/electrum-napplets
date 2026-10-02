@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facilitator · mcp.cashu.exchange</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1d212a;--border:#2a2f3a;--text:#e6e9ef;
+    --muted:#9aa3b2;--accent:#f7931a;--ok:#34d399;--err:#f87171;--warn:#fbbf24}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,sans-serif}
+  body{display:flex;flex-direction:column;max-width:520px;margin:0 auto;
+    border-left:1px solid var(--border);border-right:1px solid var(--border)}
+  .bar{display:flex;justify-content:space-between;padding:8px 16px 0;font-size:11px;color:var(--muted)}
+  .appbar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .appbar h1{font-size:15px;margin:0}.appbar h1 b{color:var(--accent)}
+  .appbar .wallet{margin-left:auto;font-size:12px;color:var(--accent);border:1px solid var(--accent);
+    border-radius:999px;padding:3px 9px}
+  main{flex:1;overflow-y:auto;padding:14px 16px 20px;display:flex;flex-direction:column;gap:12px}
+  h2{font-size:17px;margin:0}
+  h3{font-size:12px;margin:0;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+  p{margin:0;font-size:13px;line-height:1.45;color:var(--muted)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .row{display:flex;align-items:center;gap:10px}
+  .grow{flex:1;min-width:0}
+  .title{font-size:14px;font-weight:600}
+  .sub{font-size:11.5px;color:var(--muted)}
+  .sats{color:var(--accent);font-weight:700}
+  .pill{font-size:10.5px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted)}
+  .pill.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
+  .pill.no{color:var(--err);border-color:rgba(248,113,113,.45)}
+  .pill.ac{color:var(--accent);border-color:rgba(247,147,26,.45)}
+  button{font:inherit;border:0;border-radius:10px;padding:11px 14px;background:var(--accent);color:#111;
+    font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--text);border:1px solid var(--border);font-weight:600}
+  button.wide{width:100%}
+  button:disabled{opacity:.45;cursor:default}
+  .cta{margin-top:auto;display:flex;flex-direction:column;gap:8px}
+  .kv{display:flex;justify-content:space-between;gap:12px;font-size:12.5px;padding:4px 0}
+  .kv+.kv{border-top:1px dashed var(--border)}
+  .kv span:first-child{color:var(--muted)}
+  .mono{font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:var(--muted);word-break:break-all}
+  .ring{display:flex;gap:6px;flex-wrap:wrap}
+  .ring i{width:32px;height:32px;border-radius:9px;background:var(--panel2);border:1px solid var(--border);
+    display:grid;place-items:center;font-size:11px;font-style:normal;color:var(--muted)}
+  .ring i.you{border-color:var(--accent);color:var(--accent);font-weight:700}
+  .note{font-size:11px;color:var(--muted);font-style:italic}
+  .banner{border-radius:12px;padding:12px;font-size:13px}
+  .banner.ok{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.45);color:var(--ok);font-weight:700}
+  .banner.err{background:rgba(248,113,113,.13);border:1px solid rgba(248,113,113,.45)}
+  .hide{display:none!important}
+  select{font:inherit;background:var(--bg);color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:9px 10px;width:100%}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .grid2 button{font-size:12px;padding:9px 8px}
+</style>
+</head>
+<body>
+  <div class="bar"><span>14:11</span><span id="who">Food Runners · online</span></div>
+  <div class="appbar"><h1>Facilitator <span class="sub">/demo</span></h1>
+    <span class="wallet" id="payout">+0 sats</span></div>
+
+  <main>
+    <div class="card">
+      <h3>Acting as</h3>
+      <select id="role"></select>
+      <p class="note" style="margin-top:8px">Demo keys are derived from the public
+        constant <span class="mono">mcp-cashu-pizza-demo/&lt;idx&gt;</span> — no private key
+        is stored in the repo. The impostor option signs with a key that is not in the
+        buyer's roster at all.</p>
+    </div>
+
+    <div id="noorder" class="card center"><span class="sub">Waiting for an order…</span></div>
+
+    <div id="order" class="hide" style="display:flex;flex-direction:column;gap:12px">
+      <div class="card">
+        <h3>New order</h3>
+        <div class="kv"><span>Order</span><span id="o-id">—</span></div>
+        <div class="kv"><span>Items</span><span id="o-items">—</span></div>
+        <div class="kv"><span>Pickup</span><span>Pizzeria Napoli, Kreuzberg</span></div>
+        <div class="kv"><span>Drop</span><span>10999 · 1.8 km</span></div>
+        <div class="kv"><span>Settle</span><span class="sats" id="o-settle">—</span></div>
+      </div>
+
+      <div class="card">
+        <h3>The buyer pinned this set</h3>
+        <div class="kv"><span>List</span><span id="o-setid">—</span></div>
+        <div class="kv"><span>Members</span><span id="o-count">—</span></div>
+        <div class="kv"><span>Version hash</span><span class="mono" id="o-hash">—</span></div>
+        <p style="margin-top:8px">Prove you are in it — without revealing which member you are.</p>
+        <div class="ring" id="o-ring" style="margin-top:10px"></div>
+        <p class="note" id="o-ringnote" style="margin-top:8px"></p>
+      </div>
+
+      <div class="cta">
+        <button class="wide" id="prove" disabled>Prove &amp; accept order</button>
+      </div>
+
+      <div id="proof" class="card hide">
+        <h3>Proof sent</h3>
+        <div class="kv"><span>Ring size</span><span id="p-ring">—</span></div>
+        <div class="kv"><span>Key image</span><span class="mono" id="p-img">—</span></div>
+        <div class="kv"><span>Order binding</span><span id="p-bind">—</span></div>
+        <p class="note" style="margin-top:8px">Your key image for this order is spent —
+          the same proof cannot be used twice.</p>
+      </div>
+
+      <div id="controls" class="card hide">
+        <h3>Advance the order</h3>
+        <div class="grid2" style="margin-top:8px">
+          <button class="ghost" data-status="accepted">Accepted</button>
+          <button class="ghost" data-status="preparing">Preparing</button>
+          <button class="ghost" data-status="delivery">Out for delivery</button>
+          <button class="ghost" data-status="delivered">Delivered</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+<script src="./trust-ring.bundle.js"></script>
+<script src="./cashu-paid-leg.bundle.js"></script>
+<script>
+(() => {
+  const T = window.__trustRing;
+  const CH = new BroadcastChannel("pizza-trust-demo");
+  const $ = (s) => document.querySelector(s);
+  const hexToBytes = (h) => Uint8Array.from(h.match(/../g), (b) => parseInt(b, 16));
+  const short = (h, n = 10) => h.slice(0, n) + "…";
+
+  let roster = null;
+  let pending = null;   // the buyer's ORDER message
+  let ringIndices = [];
+
+  const state = window.__facilitator = {
+    role: "member", memberIdx: 0, order: null, ring: [], proofSent: false,
+    keyImage: null, chosenLabel: null, impersonating: false, status: null,
+    token: null, redeemedTotal: null, redeemStates: null, redeemError: null,
+  };
+
+  // Keys are derived, never stored: secretKey = sha256("mcp-cashu-pizza-demo/" + idx)
+  async function derivedSecret(idx) {
+    const bytes = new TextEncoder().encode("mcp-cashu-pizza-demo/" + idx);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return new Uint8Array(digest);
+  }
+
+  async function loadRoster() {
+    // the facilitator page only needs labels for the selector; the authoritative
+    // trust set arrives from the buyer over the channel
+    const res = await fetch("./facilitator-roster.json");
+    roster = await res.json();
+    state.roster = roster;
+    $("#role").innerHTML = roster.members.map((m, i) =>
+      `<option value="member:${i}">${m.label} (in the roster)</option>`).join("") +
+      `<option value="impostor">Anon Delivery — NOT in the roster</option>`;
+  }
+
+  $("#role").addEventListener("change", (e) => {
+    const v = e.target.value;
+    if (v === "impostor") { state.role = "impostor"; state.impersonating = true; state.memberIdx = null; }
+    else { const i = Number(v.split(":")[1]); state.role = "member"; state.impersonating = false; state.memberIdx = i; }
+    if (pending) prepareRing();
+  });
+
+  function prepareRing() {
+    const { trustSet } = pending;
+    const members = trustSet.members;
+    if (state.impersonating) {
+      // attack 2: a valid ring signature over a ring that contains an OUTSIDE key.
+      // The signature verifies; the policy rejects on the subset check.
+      ringIndices = null;
+      state.ring = "[own key] + 3 of the buyer's";
+      state.impersonating = true;
+    } else {
+      ringIndices = pending.ringIndices;
+      state.ring = ringIndices.map((i) => members[i].label);
+    }
+    $("#o-ring").innerHTML = state.impersonating
+      ? `<i class="you">you</i>` + ["", "", ""].map(() => "<i>?</i>").join("")
+      : ringIndices.map((_, i) => `<i class="${i === 0 ? "you" : ""}">${i === 0 ? "you" : "?"}</i>`).join("");
+    $("#o-ringnote").textContent = state.impersonating
+      ? "Ring of 4: your key plus three of the buyer's trusted keys. Signing works — the policy still rejects it."
+      : `Ring of ${ringIndices.length} drawn from their ${members.length}. Your key image is locked to this order, one use.`;
+    $("#prove").disabled = false;
+    $("#prove").textContent = state.impersonating
+      ? "Attempt proof (impostor)" : "Prove & accept order";
+  }
+
+  async function sendProof() {
+    const { trustSet, pin, order } = pending;
+    const members = trustSet.members;
+
+    // Both cases put OUR key at ring position 0 and sign with the real LSAG
+    // signer. Honest: the ring is drawn from the buyer's pinned set. Impostor:
+    // the ring holds a key the buyer has never seen — the signature still
+    // verifies, and the policy's subset check is what rejects it.
+    let ringArr, secretKey, label;
+    if (state.impersonating) {
+      const kp = T.generateKeyPair();
+      ringArr = [kp.publicKey, members[0].publicKey, members[1].publicKey, members[2].publicKey];
+      secretKey = kp.secretKey;
+      label = "Anon Delivery";
+    } else {
+      ringArr = ringIndices.map((i) => members[i].publicKey);
+      secretKey = await derivedSecret(state.memberIdx);
+      label = roster.members[state.memberIdx].label;
+    }
+
+    let proof = null;
+    let err = null;
+    try {
+      const sig = T.sign(T.orderMessage(order), ringArr, 0, secretKey);
+      proof = { signature: sig, ring: ringArr, pin, order, anonymitySetSize: ringArr.length };
+    } catch (e) { err = e.message || String(e); }
+
+    state.proofSent = !err;
+    state.proof = proof;
+    state.keyImage = proof ? T.toHex(proof.signature.keyImage) : null;
+    if (err) { $("#o-ringnote").textContent = "proof error: " + err; return; }
+
+    if (!state.impersonating) {
+      $("#proof").classList.remove("hide");
+      $("#controls").classList.remove("hide");
+      $("#p-ring").textContent = String(proof.ring.length);
+      $("#p-img").textContent = short(state.keyImage, 10) + "…";
+      $("#p-bind").textContent = `${order.orderId} · ${order.amount} ${order.currency}`;
+      $("#payout").textContent = "+" + Number(order.amount).toLocaleString("en-US") + " sats";
+    }
+    CH.postMessage({ type: "PROOF", proof, label });
+  }
+
+  CH.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m.type === "ORDER") {
+      pending = m;
+      state.order = m.order;
+      state.chosenLabel = m.label;
+      state.trustSet = m.trustSet;
+      $("#noorder").classList.add("hide");
+      $("#order").classList.remove("hide");
+      $("#o-id").textContent = `#${m.order.orderId} · 2 pizzas`;
+      $("#o-items").textContent = "Margherita + Quattro Formaggi";
+      $("#o-settle").textContent = `${Number(m.order.amount).toLocaleString("en-US")} sats on delivery`;
+      $("#o-setid").textContent = m.trustSet.setId;
+      $("#o-count").textContent = String(m.trustSet.members.length);
+      $("#o-hash").textContent = short(m.pin.contentHash, 8) + "…";
+      $("#proof").classList.add("hide");
+      $("#controls").classList.add("hide");
+      if (m.impostor) { $("#role").value = "impostor"; state.impersonating = true; state.memberIdx = null; }
+      prepareRing();
+    }
+    if (m.type === "PAID") { state.paid = true; }
+    if (m.type === "TOKEN") {
+      state.token = m.token;
+      state.redeemedTotal = null;
+      redeemToken(m.token);
+    }
+  });
+
+  const MINT = new URLSearchParams(location.search).get("mint") || "https://cdk-a056e0f.cashu.exchange";
+
+  function mintLegLine(text) {
+    let el = document.getElementById("mint-leg");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "mint-leg";
+      el.className = "mono";
+      (document.querySelector("#order") || document.body).appendChild(el);
+    }
+    el.textContent = text;
+  }
+
+  /** PAID LEG (facilitator half): redeem the buyer's ecash at the mint, then release the order. */
+  async function redeemToken(token) {
+    try {
+      mintLegLine("redeeming the buyer's ecash…");
+      const res = await CashuPaidLeg.redeem(MINT, token);
+      // NUT-07 first: the point of the demo is that the buyer's proofs really are
+      // SPENT at the mint, so read that back before declaring the total.
+      state.redeemStates = (await CashuPaidLeg.checkStates(MINT, token)) || [];
+      state.redeemedTotal = res.total;
+      CH.postMessage({ type: "STATUS", state: "preparing" });
+      mintLegLine(`ecash redeemed: ${res.total} sat (original proofs: ${state.redeemStates.join(",")}) — order released to the kitchen`);
+    } catch (err) {
+      state.redeemError = err.message || String(err);
+      mintLegLine(`redeem failed: ${state.redeemError}`);
+    }
+  }
+
+  $("#prove").addEventListener("click", sendProof);
+  document.querySelectorAll("[data-status]").forEach((b) =>
+    b.addEventListener("click", () => {
+      state.status = b.dataset.status;
+      CH.postMessage({ type: "STATUS", state: b.dataset.status });
+      b.style.borderColor = "var(--ok)";
+    }));
+
+  loadRoster();
+})();
+</script>
+</body>
+</html>

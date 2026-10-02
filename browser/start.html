@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Electrum Browser</title>
+<style>
+  :root { color-scheme: light dark; --accent: #f7931a; --muted: #888; }
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 48px auto; padding: 0 16px; }
+  h1 { font-size: 28px; margin-bottom: 4px; }
+  h1 span { color: var(--accent); }
+  p.sub { color: var(--muted); margin-top: 0; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 90px; font: 13px monospace; padding: 8px; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 10px 22px;
+           font-size: 15px; font-weight: 600; cursor: pointer; margin-top: 8px; }
+  button:disabled { opacity: .5; cursor: default; }
+  #result { margin-top: 12px; font: 13px monospace; word-break: break-all; }
+  .ok { color: #2e9d4f; } .err { color: #d0402f; }
+</style>
+</head>
+<body>
+  <h1><span>&#9889;</span> Electrum Browser</h1>
+  <p class="sub">A web browser inside your Bitcoin wallet. Type an address in the bar above.</p>
+
+  <h2>Pay a Lightning invoice</h2>
+  <p>Paste a BOLT11 invoice. This page pays it through <code>window.webln</code>, the same way a shop's "Pay now" button would.</p>
+  <textarea id="invoice" placeholder="lnbc..."></textarea>
+  <button id="pay">Pay now</button>
+  <div id="result"></div>
+
+<script>
+  const result = document.getElementById('result');
+  const button = document.getElementById('pay');
+  button.addEventListener('click', async () => {
+    const invoice = document.getElementById('invoice').value.trim();
+    if (!invoice) return;
+    button.disabled = true;
+    result.className = '';
+    result.textContent = 'Waiting for the wallet...';
+    try {
+      await window.webln.enable();
+      const { preimage } = await window.webln.sendPayment(invoice);
+      result.className = 'ok';
+      result.textContent = 'Paid. Preimage: ' + preimage;
+    } catch (err) {
+      result.className = 'err';
+      result.textContent = err.message;
+    } finally {
+      button.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

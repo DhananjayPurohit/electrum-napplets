@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Napplets</title>
+<style>
+  :root { --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e9ef; --muted: #9aa3b2; --accent: #f7931a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #08090c; color: var(--text);
+    font: 13px/1.4 system-ui, sans-serif; overflow: hidden; }
+  header { display: flex; align-items: baseline; gap: 10px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 15px; }
+  header h1 b { color: var(--accent); }
+  header span { color: var(--muted); }
+  .stage { display: flex; gap: 12px; padding: 12px; height: calc(100% - 44px - 30px); }
+  .pane { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; }
+  .label b { color: var(--text); font-size: 12px; }
+  .tag { border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
+  .tag.cap { color: var(--accent); border-color: #5a3a10; }
+  iframe { flex: 1; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+  footer { height: 30px; padding: 6px 16px; color: var(--muted); border-top: 1px solid var(--border);
+    font: 11px ui-monospace, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+  <header><h1><b>napplets</b> in Electrum</h1><span>sandboxed apps · the wallet confirms every payment</span></header>
+  <div class="stage" id="stage"></div>
+  <footer id="log">starting…</footer>
+<script>
+// The napplet shell (NIP-5D). Trusted: Electrum loads this page itself, and only
+// this page gets window.__electrumNapplets. Napplets run in sandboxed srcdoc
+// iframes and reach the shell only through postMessage.
+(async () => {
+  "use strict";
+  const log = (text) => { document.getElementById("log").textContent = text; };
+  const bridge = window.__electrumNapplets;
+  if (!bridge) { log("This page only works inside the Electrum Browser."); return; }
+
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  const { napplets, shim } = await bridge.call("nappletList");
+  const byWindow = new Map();   // napplet Window -> record; MessageEvent.source is unforgeable
+
+  function contentSecurityPolicy(meta) {
+    const connect = meta.connect.length ? meta.connect.join(" ") : "'none'";
+    return "default-src 'none'; script-src 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'unsafe-inline'; " +
+      `img-src data: blob:; font-src data:; connect-src ${connect}; worker-src 'none'; child-src 'none'; ` +
+      "frame-src 'none'; media-src 'none'; object-src 'none'; manifest-src 'none'; base-uri 'none'; form-action 'none'";
+  }
+
+  // The injected CSP and runtime come first in <head>, before any napplet bytes run.
+  function prepare(html, meta) {
+    const runtime = shim.replace("__NAPPLET_DOMAINS__", JSON.stringify(meta.domains));
+    const injected = `<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(meta)}">\n` +
+      `<script>\n${runtime}\n<\/script>\n`;
+    const head = /<head[^>]*>/i.exec(html);
+    return head ? html.slice(0, head.index + head[0].length) + "\n" + injected + html.slice(head.index + head[0].length)
+      : injected + html;
+  }
+
+  for (const meta of napplets) {
+    const { html } = await bridge.call("nappletSource", meta.dTag);
+    const pane = document.createElement("div");
+    pane.className = "pane";
+    pane.innerHTML = `<div class="label"><b>${escapeHtml(meta.title)}</b>
+      <span class="tag">${escapeHtml(meta.dTag)}</span>
+      <span class="tag" title="sha256 of the napplet bytes">local · unsigned · ${escapeHtml(meta.sha256.slice(0, 10))}…</span>
+      ${meta.domains.map((d) => `<span class="tag cap">${escapeHtml(d)}</span>`).join("")}</div>`;
+    const frame = document.createElement("iframe");
+    frame.setAttribute("sandbox", "allow-scripts");
+    frame.title = meta.title;
+    pane.appendChild(frame);
+    document.getElementById("stage").appendChild(pane);
+    byWindow.set(frame.contentWindow, { meta, window: frame.contentWindow, session: false, topics: new Set() });
+    frame.srcdoc = prepare(html, meta);
+  }
+  log(`${napplets.length} napplets loaded`);
+
+  // Payloads are re-serialized so only JSON crosses between napplets (no
+  // transferables such as MessagePorts that would bypass the shell).
+  const asJson = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+
+  window.addEventListener("message", async (event) => {
+    const napplet = byWindow.get(event.source);
+    if (!napplet) return;
+    const message = event.data;
+    if (!message || typeof message !== "object" || typeof message.type !== "string") return;
+    const reply = (m) => napplet.window.postMessage(m, "*");
+    const granted = (domain) => napplet.meta.domains.includes(domain);
+
+    if (message.type === "shell.ready") {
+      if (napplet.session) return;
+      napplet.session = true;
+      reply({ type: "shell.init", capabilities: { domains: napplet.meta.domains }, services: [] });
+      return;
+    }
+    if (!napplet.session) return;
+
+    switch (message.type) {
+      case "inc.subscribe":
+        if (!granted("inc")) return;
+        napplet.topics.add(String(message.topic));
+        reply({ type: "inc.subscribe.result", id: message.id });
+        break;
+      case "inc.unsubscribe":
+        napplet.topics.delete(String(message.topic));
+        break;
+      case "inc.emit": {
+        if (!granted("inc")) return;
+        const topic = String(message.topic);
+        const payload = asJson(message.payload);
+        let delivered = 0;
+        for (const other of byWindow.values()) {
+          if (other === napplet || !other.session || !other.topics.has(topic)) continue;
+          other.window.postMessage({ type: "inc.event", topic, sender: napplet.meta.dTag, payload }, "*");
+          delivered++;
+        }
+        const kind = payload && typeof payload === "object" && payload.type ? ` ${payload.type}` : "";
+        log(`${napplet.meta.dTag} → ${topic}${kind} (delivered to ${delivered})`);
+        break;
+      }
+      case "wallet.pay":
+        if (!granted("wallet")) return;
+        log(`${napplet.meta.dTag} asks the wallet to pay an invoice`);
+        try {
+          const result = await bridge.call("nappletPay", napplet.meta.dTag, String(message.invoice));
+          reply({ type: "wallet.pay.result", id: message.id, result: { preimage: result.preimage } });
+          log(`${napplet.meta.dTag}: paid`);
+        } catch (err) {
+          reply({ type: "wallet.pay.result", id: message.id, error: err.message });
+          log(`${napplet.meta.dTag}: payment not made (${err.message})`);
+        }
+        break;
+      // unrecognized types are silently ignored (NIP-5D)
+    }
+  });
+})();
+</script>
+</body>
+</html>

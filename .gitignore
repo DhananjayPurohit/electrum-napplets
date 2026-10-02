@@ -1,0 +1,7 @@
+.venv/
+.syslibs/
+electrum-src/
+dist/
+__pycache__/
+tests/screenshots/
+tests/.electrum-data/

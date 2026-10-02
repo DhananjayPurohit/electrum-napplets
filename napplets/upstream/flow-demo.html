@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizza order flow — two actors (demo surface)</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--border:#2a2f3a;--text:#e6e9ef;--muted:#9aa3b2;--accent:#f7931a}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:#08090c;color:var(--text);
+    font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
+  header{display:flex;align-items:center;gap:14px;padding:12px 18px;background:var(--panel);
+    border-bottom:1px solid var(--border)}
+  header h1{margin:0;font-size:15px}
+  header h1 b{color:var(--accent)}
+  #caption{margin-left:auto;font-size:14px;color:var(--text);font-weight:600}
+  #caption span{color:var(--muted);font-weight:400;margin-right:10px;font-size:12px;
+    text-transform:uppercase;letter-spacing:.08em}
+  .stage{display:flex;gap:16px;padding:16px;height:calc(100% - 52px);justify-content:center}
+  .pane{flex:1;max-width:600px;display:flex;flex-direction:column;gap:6px;min-width:0}
+  .pane .label{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--muted)}
+  .pane .label b{color:var(--accent);font-weight:700}
+  .pane iframe{flex:1;width:100%;border:1px solid var(--border);border-radius:14px;background:var(--bg)}
+</style>
+</head>
+<body>
+  <header>
+    <h1><b>mcp</b>.cashu.exchange <span style="color:var(--muted);font-weight:400">/pizza · ring-signature facilitator vetting</span></h1>
+    <div id="caption"><span>step</span>loading…</div>
+  </header>
+  <div class="stage">
+    <div class="pane">
+      <div class="label">&#128100; <b>buyer</b> — order.html (the verifier)</div>
+      <iframe id="buyer" title="buyer"></iframe>
+    </div>
+    <div class="pane">
+      <div class="label">&#128666; <b>facilitator</b> — facilitator.html (the prover)</div>
+      <iframe id="fac" title="facilitator"></iframe>
+    </div>
+  </div>
+<script>
+  // the driver sets the caption between beats
+  window.setCaption = (n, text) => {
+    document.querySelector("#caption").innerHTML =
+      `<span>step ${n}</span>${text}`;
+  };
+  // Forward the demo's query string (?mint=...) into both panes. The two panes
+  // MUST share an origin and a mint: the token hand-off travels over
+  // BroadcastChannel, so a differing mint would leave the facilitator unable to
+  // redeem what the buyer minted (and the paid leg would look "broken").
+  const q = location.search;
+  document.getElementById("buyer").src = "./order.html" + q;
+  document.getElementById("fac").src = "./facilitator.html" + q;
+  window.__demo = { ready: true };
+</script>
+</body>
+</html>

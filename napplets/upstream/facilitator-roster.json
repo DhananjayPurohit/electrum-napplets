@@ -1,0 +1,89 @@
+{
+  "_warning": "Demo fixture. Facilitator keys are DERIVED from the public constant in keyDerivation below — no private key is stored here and none should ever be. Throwaway by construction; never use for anything real.",
+  "keyDerivation": "secretKey = sha256(\"mcp-cashu-pizza-demo/\" + idx); publicKey = secp256k1.getPublicKey(secretKey, true)",
+  "setId": "pizza-facilitators-berlin",
+  "description": "Berlin pizza facilitators — vetted Q3 2026 (demo roster)",
+  "publishedAt": "2026-09-28T11:20:00Z",
+  "members": [
+    {
+      "idx": 0,
+      "label": "Food Runners Berlin",
+      "pubkey": "02af621be286642f62661ac6505c0c36b143ce22e78f100b90f8456de49036d966",
+      "basis": "met-in-person",
+      "tier": "gold",
+      "deliveries": 312,
+      "rating": 4.9,
+      "status": "demo-key"
+    },
+    {
+      "idx": 1,
+      "label": "Kreuzberg Couriers",
+      "pubkey": "02b2b881fd9e01bf37f9be7935abc1e8edf422d5b9939952e06e5aeafea2c674f7",
+      "basis": "vouched",
+      "tier": "silver",
+      "deliveries": 88,
+      "rating": 4.7,
+      "status": "demo-key"
+    },
+    {
+      "idx": 2,
+      "label": "Mitte Bike Messengers",
+      "pubkey": "038cc0a77c922931ca1149276615b35740bcb8980c9ad5c1d7089c15db7c4d7ef4",
+      "basis": "met-in-person",
+      "tier": "gold",
+      "deliveries": 205,
+      "rating": 4.8,
+      "status": "demo-key"
+    },
+    {
+      "idx": 3,
+      "label": "Sole Delivery Co-op",
+      "pubkey": "03109eca059ca1c33b5d5537a5f8c298dc563d52ace9b8713ecefb71e63bd6e300",
+      "basis": "vouched",
+      "tier": "silver",
+      "deliveries": 141,
+      "rating": 4.6,
+      "status": "demo-key"
+    },
+    {
+      "idx": 4,
+      "label": "Neukölln Night Riders",
+      "pubkey": "037cf88ce7940811adf8da82f8ab4bd371bb47fe460ef845c92215d30b6d9bb4f6",
+      "basis": "vouched",
+      "tier": "silver",
+      "deliveries": 67,
+      "rating": 4.5,
+      "status": "demo-key"
+    },
+    {
+      "idx": 5,
+      "label": "Prenzlauer Pedal",
+      "pubkey": "0288951d0792fd8b5266b8e43d4317cce80d10760414400ded424bcfc064007885",
+      "basis": "seed",
+      "tier": "bronze",
+      "deliveries": 12,
+      "rating": 4.4,
+      "status": "demo-key"
+    },
+    {
+      "idx": 6,
+      "label": "Tempelhof Transit",
+      "pubkey": "02fe682fd9e90a0badc6773ccecc41c6e4f664b2556ed3dac6155d40281f279d81",
+      "basis": "seed",
+      "tier": "bronze",
+      "deliveries": 5,
+      "rating": 4.3,
+      "status": "demo-key"
+    },
+    {
+      "idx": 7,
+      "label": "Charlottenburg Couriers",
+      "pubkey": "034382b46ed32e3351beee6fbe8fe78836e733a13db058143460e0f60024f1b5b2",
+      "basis": "seed",
+      "tier": "bronze",
+      "deliveries": 3,
+      "rating": 4.2,
+      "status": "demo-key"
+    }
+  ]
+}
