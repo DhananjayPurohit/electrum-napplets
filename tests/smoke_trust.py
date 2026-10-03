@@ -180,17 +180,15 @@ def main():
               bool(image_alice) and bool(image_bob) and image_alice != image_bob,
               f'{str(image_alice)[:12]} vs {str(image_bob)[:12]}')
 
+        # a vendor outside the set simply has nothing to resolve: it never answers
         yield js(malice, '__trust.proveAndQuote()')
-        got = yield from wait_for(charlie, 'window.__trust.proofs.length >= 3')
-        check('the outsider still reached the customer', bool(got))
-        refused = yield js(charlie, 'JSON.stringify(__trust.proofs[2].verdict)')
-        check('customer refused the unproven quote', '"ok":false' in refused and 'no ring proof' in refused, refused)
-        undercut = yield js(charlie, 'String(__trust.proofs[2].quote.sats)')
-        check('the refused quote was the cheapest (an undercut)', undercut == '576', undercut)
-        own = yield js(malice, 'JSON.stringify(__trust.refused)')
-        check('outsider sees the refusal on her own screen',
-              'not in this customer' in own, own)
-        shot('trust_2_quotes_and_refusal')
+        yield ('sleep', 900)
+        count = yield js(charlie, '__trust.proofs.length')
+        check('the outsider never answers — no quote, and no refusal message either',
+              count == 2, str(count))
+        role = yield js(malice, 'JSON.stringify({amMember: __trust.amMember, proof: !!__trust.proof})')
+        check('the outsider has nothing to act on', '"amMember":false' in role and '"proof":false' in role, role)
+        shot('trust_2_quotes')
 
         # cheapest verified quote wins
         yield js(charlie, '__trust.acceptBest()')
@@ -228,20 +226,16 @@ def main():
         check('customer holds the preimage', bool(paid), str(paid))
         shot('trust_3_paid')
 
-        # the venue leg, through the hub to the venue stub
-        yield js(alice, '__trust.placeVenueOrder()')
-        created = yield from wait_for(alice, 'window.__trust.venue.orderId')
-        check('venue order created through the hub', bool(created), str(created))
-        yield js(alice, '__trust.pollVenue()')
-        yield ('sleep', 400)
-        yield js(alice, '__trust.pollVenue()')
-        got = yield from wait_for(alice, 'window.__trust.venue.venueOrderNumber')
+        # the UI itself orders the burger: paying places the venue order
+        created = yield from wait_for(charlie, 'window.__trust.venue.orderId', 30_000)
+        check('the customer UI placed the venue order through the API', bool(created), str(created))
+        got = yield from wait_for(charlie, 'window.__trust.venue.venueOrderNumber', 45_000)
         check('venue confirmed the order number', got == '8613-S3X-0007', str(got))
-        status = yield js(alice, 'window.__trust.venue.status')
-        check('venue state advanced to submitted', status == 'submitted', str(status))
-        customer_venue = yield from wait_for(charlie, 'window.__trust.venue.venueOrderNumber')
-        check('the customer sees the venue order number too', customer_venue == '8613-S3X-0007', str(customer_venue))
-        shot('trust_4_venue_submitted')
+        announce = yield from wait_for(charlie, 'window.__trust.announcement')
+        check('the UI announces the purchase', bool(announce) and 'successfully' in announce, str(announce))
+        vendor_announce = yield from wait_for(alice, 'window.__trust.announcement', 25_000)
+        check('the facilitator sees the announcement too', bool(vendor_announce), str(vendor_announce))
+        shot('trust_4_venue_ordered')
 
         # the cross-device path was exercised (same messages, also over the hub)
         state = hub.messages

@@ -90,9 +90,11 @@ async function main() {
   await pages.bob.evaluate('__trust.proveAndQuote()');
   await waitFor(async () => pages.charlie.evaluate('__trust.proofs.length >= 2'));
 
+  // a vendor outside the set has nothing to resolve: it never answers at all
   await pages.malice.evaluate('__trust.proveAndQuote()');
-  const v3 = await waitFor(async () => pages.charlie.evaluate('__trust.proofs.length >= 3 && JSON.stringify(__trust.proofs[2].verdict)'));
-  check('outsider refused on the phone', String(v3).includes('"ok":false'), String(v3));
+  await sleep(1200);
+  const count = await pages.charlie.evaluate('__trust.proofs.length');
+  check('the outsider never answers — nothing to resolve on the phone either', count === 2, String(count));
 
   await pages.charlie.evaluate('__trust.acceptBest()');
   const accepted = await pages.charlie.evaluate('JSON.stringify({sats: __trust.accepted.quote.sats, from: __trust.accepted.from})');
@@ -106,21 +108,18 @@ async function main() {
   check('the phone payment reports which wallet it used', via === 'webln', String(via));
   await pages.charlie.screenshot({ path: path.join(SHOTS, 'trust_phone_customer.png') });
 
-  // the venue leg from the phone
-  await pages.alice.evaluate('__trust.placeVenueOrder()');
-  await waitFor(async () => pages.alice.evaluate('__trust.venue.orderId'));
-  await pages.alice.evaluate('__trust.pollVenue()');
-  await sleep(300);
-  await pages.alice.evaluate('__trust.pollVenue()');
-  const venueOrder = await waitFor(async () => pages.alice.evaluate('__trust.venue.venueOrderNumber'));
-  check('venue order reached submitted from the phone', venueOrder === '8613-S3X-0007', String(venueOrder));
-  const customerSaw = await waitFor(async () => pages.charlie.evaluate('__trust.venue.venueOrderNumber'));
-  check('the customer sees the venue order over the hub', customerSaw === '8613-S3X-0007', String(customerSaw));
+  // the customer's UI orders the burger itself, as soon as the payment settles
+  const venueOrder = await waitFor(async () => pages.charlie.evaluate('__trust.venue.venueOrderNumber'), 45000);
+  check('the phone UI ordered the burger through the API', venueOrder === '8613-S3X-0007', String(venueOrder));
+  const announce = await waitFor(async () => pages.charlie.evaluate('__trust.announcement'));
+  check('the phone UI announces the purchase', String(announce).includes('successfully'), String(announce));
+  const vendorAnnounce = await waitFor(async () => pages.alice.evaluate('__trust.announcement'), 25000);
+  check('the facilitator sees the announcement too', Boolean(vendorAnnounce), String(vendorAnnounce));
   await pages.alice.screenshot({ path: path.join(SHOTS, 'trust_phone_vendor.png') });
 
   // the relay saw the conversation, and both transports used the same envelopes
   const state = await (await fetch(`${BASE}/state`)).json();
-  check('hub relayed the whole conversation', state.messages >= 8, `${state.messages} messages`);
+  check('hub relayed the whole conversation', state.messages >= 5, `${state.messages} messages`);
   check('hub delivery counter advanced', state.delivered > 0, `${state.delivered} delivered`);
 
   await browser.close();

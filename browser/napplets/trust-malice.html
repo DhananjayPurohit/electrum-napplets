@@ -3118,6 +3118,7 @@ window.__trustRing = __trustRing;
     transport: null, peers: [], order: null, pin: PIN.member || CONFIG.pin,
     sent: [], received: [], proof: null, proofs: [], verdicts: {},
     errors: [],
+    announcement: null,
     quotes: [], accepted: null, paid: null, walletError: null,
     venue: { orderId: null, status: null, invoice: null, venueOrderNumber: null, rail: null },
     refused: null, checks: [], error: null, log: [],
@@ -3227,6 +3228,11 @@ window.__trustRing = __trustRing;
     if (kind === "quote") return onQuote(envelope);
     if (kind === "verdict") return onVerdict(envelope);
     if (kind === "venue.status") return onVenueStatus(envelope);
+    if (kind === "announce") {
+      state.announcement = body.text;
+      if (body.venue) Object.assign(state.venue, body.venue);
+      return render();
+    }
   }
 
   function orderOf(body) {
@@ -3318,41 +3324,30 @@ window.__trustRing = __trustRing;
   }
 
   // ── vendor: prove membership of a set we may not be in ─────────────────────
+  // ONE action. The quote IS the proof-bearing message; there is no separate
+  // "prove" step and no second button. A vendor whose key is not in the pinned
+  // set has nothing to resolve here — it just never acts, and never answers.
   function proveAndQuote(transport) {
     const order = state.order;
-    if (!order) return;
+    if (!order || !AM_MEMBER) return;
     state.refused = null;
     try {
-      if (!AM_MEMBER) {
-        throw new Error("your key is not in this customer's trust set — cannot prove membership");
-      }
       const signerKey = { secretKey: hexToBytes(ME.secretKey), publicKey: hexToBytes(ME.publicKey) };
       const ringIndices = SET.members.map((_, i) => i);      // the whole pinned set
       const proof = T.prove(SET, signerKey, ringIndices, order);
-      const margin = Number(order.venue ? VENUE_PRICE : order.amount) * 0;
-      const quoteSats = VENUE_PRICE + Math.max(1, Math.round(VENUE_PRICE * 0.08)) + margin;
+      const quoteSats = VENUE_PRICE + Math.max(1, Math.round(VENUE_PRICE * 0.08));
       state.proof = proof;
       const quote = {
-        npub: ME.npub, name: ME.name, sats: quoteSats,        // a real bolt11 when the venue rail gave us one, otherwise an explicitly
-        // labelled stand-in so nothing on stage pretends to be a payment it is not
+        npub: ME.npub, name: ME.name, sats: quoteSats,
         invoice: state.venue.invoice || CONFIG.standInInvoice || null,
         invoiceKind: state.venue.invoice ? "venue-bolt11" : "STAND-IN",
       };
+      state.quote = quote;
       transport.send("quote", { proof, quote }, order.clientId);
       render();
     } catch (err) {
-      state.refused = err.message;
-      transport.send("verdict", { ok: false, reason: err.message, npub: ME.npub }, order.clientId);
-      // An impostor can still shout a cheaper price. Send it as a quote with no
-      // proof at all, so the refusal shows on the customer's own screen too —
-      // the verifier is the layer that protects, not the missing button.
-      transport.send("quote", {
-        proof: null,
-        quote: {
-          npub: ME.npub, name: ME.name, sats: Math.max(1, VENUE_PRICE - 100),
-          invoice: null, invoiceKind: "no-proof", undercut: true,
-        },
-      }, order.clientId);
+      state.errors.push(`prove: ${err.message}`);
+      log(`cannot quote: ${err.message}`);
       render();
     }
   }
@@ -3381,7 +3376,7 @@ window.__trustRing = __trustRing;
       state.venue = { orderId: null, status: "unavailable", invoice: null, rail: null,
                       venueOrderNumber: null, error: err.message };
     }
-    transport.send("venue.status", { venue: state.venue, quote }, state.order?.clientId || "*");
+    transport.send("venue.status", { venue: state.venue, quote }, "*");
     render();
     return state.venue;
   }
@@ -3395,7 +3390,7 @@ window.__trustRing = __trustRing;
         status: json.status || state.venue.status,
         venueOrderNumber: json.venueOrderNumber || state.venue.venueOrderNumber,
       });
-      transport.send("venue.status", { venue: state.venue }, state.order?.clientId || "*");
+      transport.send("venue.status", { venue: state.venue }, "*");
     } catch (err) {
       state.venue.error = err.message;
     }
@@ -3424,10 +3419,31 @@ window.__trustRing = __trustRing;
         : await webln.sendPayment(invoice);
       state.paid = { invoice, preimage: result && result.preimage, via: host ? "napplet-wallet" : "webln" };
       log(`wallet: paid via ${state.paid.via}`);
+      void settleVenue();
     } catch (err) {
       state.walletError = err.message || String(err);
       log(`wallet: ${state.walletError}`);
     }
+    render();
+  }
+
+  // The UI places the order itself, so the burger really gets ordered: the venue
+  // API creates it, the poll follows it, and the result is announced to the set.
+  // Exactly ONE placer (the customer's UI) so live mode can never open two
+  // kitchen tickets for one payment.
+  async function settleVenue() {
+    if (state.venue.orderId) return;
+    await venueOrder(transport, state.accepted && state.accepted.quote);
+    render();
+    for (let i = 0; i < 8 && !state.venue.venueOrderNumber; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      await pollVenue(transport);
+      if (state.venue.venueOrderNumber) break;
+    }
+    state.announcement = state.venue.venueOrderNumber
+      ? `Burger purchased successfully ✓ venue order ${state.venue.venueOrderNumber}`
+      : `Venue order ${state.venue.orderId || "?"} · ${state.venue.status}`;
+    transport.send("announce", { text: state.announcement, venue: state.venue }, "*");
     render();
   }
 
@@ -3528,8 +3544,12 @@ window.__trustRing = __trustRing;
       root.appendChild(pay);
     }
 
-    const venueCard = card("Venue order", state.venue.orderId ? `#${state.venue.orderId} · ${state.venue.status}` : "not placed yet");
+    const venueCard = card(state.announcement || "Venue order",
+      state.venue.orderId
+        ? `#${state.venue.orderId} · ${state.venue.status} · ordered by this UI through the venue API`
+        : "placed automatically once the payment settles");
     if (state.venue.venueOrderNumber) venueCard.appendChild(el("div", "ok", `venue order ${state.venue.venueOrderNumber}`));
+    if (state.venue.error) venueCard.appendChild(el("div", "err", state.venue.error));
     root.appendChild(venueCard);
     root.appendChild(logLine());
   }
@@ -3546,46 +3566,33 @@ window.__trustRing = __trustRing;
 
     const order = card("Open order", state.order ? `#${state.order.orderId} · invited by the set, not chosen by the customer` : "waiting for a customer");
     if (state.order) {
-      order.appendChild(el("div", "mono", `venue price ${sats(VENUE_PRICE)} sats · ceiling +${Math.round(MARGIN_CAP * 100)}% · 60 s window`));
-      const button = el("button", "cta", "Prove I'm in the set & quote");
-      button.addEventListener("click", () => proveAndQuote(transport));
-      order.appendChild(button);
+      order.appendChild(el("div", "mono", `venue price ${sats(VENUE_PRICE)} sats · ceiling +${Math.round(MARGIN_CAP * 100)}%`));
+      if (AM_MEMBER) {
+        // one button, one message: the quote carries the proof
+        const button = el("button", "cta", "Prove I'm in the set & quote");
+        button.addEventListener("click", () => proveAndQuote(transport));
+        order.appendChild(button);
+      } else {
+        order.appendChild(el("div", "note", "not in this customer's set — nothing to resolve, so this vendor never answers"));
+      }
     }
     root.appendChild(order);
-
-    if (state.refused) {
-      const bad = card("REFUSED", state.refused);
-      bad.classList.add("bad");
-      bad.appendChild(el("div", "note", "a valid signature is not the question — membership is."));
-      root.appendChild(bad);
-    }
 
     if (state.proof) {
       const proof = card("Your proof", "the customer learns a member signed — never which one");
       proof.appendChild(el("div", "mono", `key image ${short(T.toHex(state.proof.signature.keyImage), 16)}`));
       proof.appendChild(el("div", "mono", `ring ${state.proof.ring.length} keys · anonymity set ${state.proof.anonymitySetSize}`));
       proof.appendChild(el("div", "mono", `order bound · ${sats(state.proof.order.amount)} sats`));
+      proof.appendChild(el("div", "mono",
+        `quote ${sats(state.quote ? state.quote.sats : VENUE_PRICE)} sats · proof and quote in one message`));
       root.appendChild(proof);
     }
 
-    const venue = card("The venue leg", state.venue.orderId ? `#${state.venue.orderId} · ${state.venue.status}` : "not started");
-    const row = el("div", "row");
-    const create = el("button", "mini", "Place the venue order");
-    create.addEventListener("click", () => venueOrder(transport, state.quote));
-    const poll = el("button", "mini", "Poll status");
-    poll.addEventListener("click", () => pollVenue(transport));
-    row.appendChild(create);
-    row.appendChild(poll);
-    venue.appendChild(row);
-    if (state.venue.invoice) venue.appendChild(el("div", "mono", `invoice ${short(state.venue.invoice, 24)}`));
-    if (state.venue.venueOrderNumber) venue.appendChild(el("div", "ok", `venue order ${state.venue.venueOrderNumber}`));
-    if (state.venue.error) venue.appendChild(el("div", "err", state.venue.error));
-    root.appendChild(venue);
-
-    const ledger = card("Ledger", "our gate pays nothing — it decides who may");
-    ledger.appendChild(el("div", "mono", `customer → you · ${state.quote ? sats(state.quote.sats) : "—"} sats`));
-    ledger.appendChild(el("div", "mono", `you → venue · ${sats(VENUE_PRICE)} sats`));
-    root.appendChild(ledger);
+    if (state.announcement) {
+      const done = card("✅ " + state.announcement,
+        state.venue.venueOrderNumber ? `venue order ${state.venue.venueOrderNumber}` : "");
+      root.appendChild(done);
+    }
     root.appendChild(logLine());
   }
 
