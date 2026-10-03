@@ -1,5 +1,5 @@
 {
-  "mint": "https://cdk-a056e0f.cashu.exchange",
+  "mint": "https://testnut.cashu.space",
   "napplets": [
     {
       "dTag": "trust-charlie",
@@ -37,8 +37,8 @@
         "wallet"
       ],
       "connect": [
-        "https://cdk-a056e0f.cashu.exchange",
-        "wss://cdk-a056e0f.cashu.exchange"
+        "https://testnut.cashu.space",
+        "wss://testnut.cashu.space"
       ]
     },
     {
@@ -49,8 +49,8 @@
         "inc"
       ],
       "connect": [
-        "https://cdk-a056e0f.cashu.exchange",
-        "wss://cdk-a056e0f.cashu.exchange"
+        "https://testnut.cashu.space",
+        "wss://testnut.cashu.space"
       ]
     }
   ]
