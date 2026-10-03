@@ -81,7 +81,7 @@ async function main() {
   // the customer opens the order; it reaches the vendors over the hub
   await pages.charlie.evaluate('__trust.openOrder()');
   const gotOrder = await waitFor(async () => pages.alice.evaluate('__trust.order && __trust.order.orderId'));
-  check('order reached a vendor over the hub', gotOrder === 'BM-4471', String(gotOrder));
+  check('order reached a vendor over the hub', String(gotOrder).startsWith('BM-4471'), String(gotOrder));
 
   await pages.alice.evaluate('__trust.proveAndQuote()');
   const v1 = await waitFor(async () => pages.charlie.evaluate('__trust.proofs.length >= 1 && JSON.stringify(__trust.proofs[0].verdict)'));
@@ -116,6 +116,40 @@ async function main() {
   const vendorAnnounce = await waitFor(async () => pages.alice.evaluate('__trust.announcement'), 25000);
   check('the facilitator sees the announcement too', Boolean(vendorAnnounce), String(vendorAnnounce));
   await pages.alice.screenshot({ path: path.join(SHOTS, 'trust_phone_vendor.png') });
+
+  // One answer per member per order — and the demo must be re-runnable. The verifier's
+  // guard is one key image per order, and the key image belongs to the member, not to
+  // the order, so a second proof for the same order is refused by design. The pane
+  // therefore answers an order once, says so if pressed again, and a fresh open mints a
+  // new order id (its own replay scope) so the whole flow runs again in one session.
+  const beforePress = await pages.charlie.evaluate('__trust.proofs.length');
+  await pages.alice.evaluate('__trust.proveAndQuote()');
+  await sleep(1200);
+  const afterPress = await pages.charlie.evaluate('__trust.proofs.length');
+  const answered = await pages.alice.evaluate('__trust.alreadyAnswered');
+  check('a second press emits no doomed proof',
+    afterPress === beforePress && Boolean(answered), `${beforePress} -> ${afterPress}, alreadyAnswered=${answered}`);
+
+  // Deliberately bypass that guard to prove the verifier still refuses a real duplicate
+  // — and that the customer's pane shows the reason with the action that clears it.
+  await pages.alice.evaluate('__trust.answered = {}; __trust.proveAndQuote()');
+  await waitFor(async () => pages.charlie.evaluate(`__trust.proofs.length > ${afterPress}`));
+  const replay = await pages.charlie.evaluate('JSON.stringify(__trust.proofs[__trust.proofs.length - 1].verdict)');
+  check('the verifier still refuses a genuine duplicate proof',
+    String(replay).includes('key image already used'), String(replay));
+  const banner = await pages.charlie.evaluate('JSON.stringify((document.querySelector(".card.bad") || {}).textContent || "")');
+  check('the refusal is a banner that names the reason and the remedy',
+    String(banner).includes('key image already used') && String(banner).includes('open a fresh order'),
+    String(banner).slice(0, 70));
+
+  // A fresh order is a fresh replay scope, so the demo runs again in the same session.
+  await pages.charlie.evaluate('__trust.openOrder()');
+  await sleep(1500);
+  await pages.alice.evaluate('__trust.proveAndQuote()');
+  await waitFor(async () => pages.charlie.evaluate(`__trust.proofs.length > ${afterPress + 1}`));
+  const fresh = await pages.charlie.evaluate('JSON.stringify(__trust.proofs[__trust.proofs.length - 1].verdict)');
+  check('re-opening mints a fresh order and the proof verifies again',
+    String(fresh).includes('"ok":true'), String(fresh));
 
   // the relay saw the conversation, and both transports used the same envelopes
   const state = await (await fetch(`${BASE}/state`)).json();
