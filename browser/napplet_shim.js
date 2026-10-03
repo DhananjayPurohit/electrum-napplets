@@ -92,5 +92,16 @@
   }
 
   Object.defineProperty(window, "napplet", { value: Object.freeze(napplet), configurable: false, writable: false });
+
+  // The shell builds the napplet frames one at a time, so this may run before
+  // its message listener exists — in that case the first shell.ready reaches
+  // nobody and every later request would sit in `queued` forever. Re-send until
+  // shell.init arrives; once the session exists the shell ignores a second
+  // ready, so repeating it is safe.
+  let readyAttempts = 0;
+  const readyRetry = setInterval(() => {
+    if (environment || ++readyAttempts > 40) return clearInterval(readyRetry);
+    send({ type: "shell.ready" });
+  }, 250);
   send({ type: "shell.ready" });
 })();
