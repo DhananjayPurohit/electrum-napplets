@@ -21,11 +21,15 @@ bridge.
 | **bob** | vendor — **in** the set | `npub1wwdv77wwn5jtyqthpjycpjl6akl5c8eh003tjv4pg2upcpcq4trsv3gkez` |
 | **malice** | vendor — **not** in the set | `npub1vqwx4pkf9q9wrsudhupkykn03s2xz692laqpevrn2uwsdzlv0uzs4cve0a` |
 
-The pinned set also contains two vendors who never appear on stage
-(`carol`, `dave`) — the ring bundle's `MIN_RING_SIZE` is 4, so a set of four keys
-is the smallest set whose proof verifies, and an anonymity set of four is a
-better story than one of two. Their npubs are in the set list on the customer's
-screen.
+The pinned set also contains two vendors who never appear at all (`carol`,
+`dave`) — the ring bundle's `MIN_RING_SIZE` is 4, so a set of four keys is the
+smallest set whose proof verifies, and an anonymity set of four is a better
+story than one of two. Their npubs are in the set list on the customer's screen.
+
+**Electrum shows exactly TWO panes: `Customer` (charlie) and `Facilitator`
+(alice).** The other actors are still built and served standalone by the hub —
+the phone flow and the tests drive all four — but they are not in the catalog,
+so they never clutter the wallet. The outsider case is a test, not a pane.
 
 Every key is derived as `sha256("ptc++-finals/trust-vendor/" + idx)`, so
 **there is no private key to leak** — they are worthless by construction, and
@@ -54,16 +58,20 @@ No network, no hub, nothing to go wrong beyond Electrum itself.
 
 Order of operations on stage:
 
-1. **charlie** — "Open this order to my pinned set" (the order goes to the set, not a person)
-2. **alice** and **bob** — "Prove I'm in the set & quote" (2 of 4 members answer)
-3. **malice** — "Prove I'm in the set & quote" → **REFUSED**, twice over: she cannot
-   build a proof for a set she is not in, and she also shouts a *cheaper* price with
-   no proof attached, which charlie's verifier refuses on screen. That is the abuse
-   beat, and it happens in front of the audience without a slide.
-4. **charlie** — "Accept the best quote" → **Pay with Electrum** → the wallet's own
-   dialog (site, amount, description, **No** is the default button) → preimage.
-5. **alice** — "Place the venue order" → the bridge returns an order id + a bolt11
-   invoice → "Poll status" twice → the venue order number.
+1. **Customer pane** — "Open this order to my pinned set". The order goes to the
+   set, not to a person; the customer never picks a counterparty.
+2. **Facilitator pane** — ONE click: "Prove I'm in the set & quote". The quote
+   message carries the ring proof; there is no separate proving step.
+3. **Customer pane** — "Accept the best quote" → **Pay with Electrum** → the
+   wallet's own dialog (site, amount, description, **No** is the default button)
+   → preimage.
+4. **Both panes** — the UI places the venue order itself through the venue API
+   and publishes "Burger purchased successfully ✓ venue order …", so the
+   facilitator screen ends on an announcement, not a console.
+
+A vendor whose key is not in the pinned set resolves nothing: it does not build a
+proof, does not quote and does not send a refusal. That is covered by
+`node tests/phone/trust-phone-flow.cjs` (four actors) rather than by a pane.
 
 ## Topology B — charlie on the phone, the vendors in Electrum
 

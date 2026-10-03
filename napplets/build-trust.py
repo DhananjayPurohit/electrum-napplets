@@ -44,6 +44,13 @@ ON_STAGE = [
     ('malice', 'vendor', 'Vendor — NOT in the pinned set (the abuse case)'),
 ]
 
+# Electrum shows TWO panes and nothing else: the customer, and one facilitator.
+# The other actors are still built and served standalone by the hub (the phone
+# demo and the tests drive four of them), but they are not in the catalog, so
+# they never appear on the Electrum screen. Four panes of this much UI is
+# clutter; the operator asked for two.
+CATALOG = [('charlie', 'Customer'), ('alice', 'Facilitator')]
+
 ORDER_ID = 'BM-4471'
 SKU = 'sim-1001'
 VENUE_PRICE_SATS = 676           # what the live bridge serves for sim-1001 (GET /provider/menu)
@@ -176,18 +183,21 @@ def main() -> int:
     catalog['napplets'] = [n for n in catalog['napplets'] if not n['dTag'].startswith('trust-')]
 
     written = []
+    titles = dict(CATALOG)
     for name, role, title in ON_STAGE:
         config = config_for(name, role, roster, hub, STANDIN)
         html = build_page(config, bundle, app, template)
         filename = f'trust-{name}.html'
         with open(os.path.join(args.out_dir, filename), 'w', encoding='utf-8') as f:
             f.write(html)
+        written.append((filename, len(html), config['actor']['npub']))
+        if name not in titles:
+            continue                    # built for the phone and the tests, not for Electrum
         catalog['napplets'].append({
-            'dTag': f'trust-{name}', 'title': f'{title}', 'file': filename,
+            'dTag': f'trust-{name}', 'title': titles[name], 'file': filename,
             'domains': ['inc', 'wallet'] if role == 'customer' else ['inc'],
             'connect': connect,
         })
-        written.append((filename, len(html), config['actor']['npub']))
 
     with open(catalog_path, 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=2)
