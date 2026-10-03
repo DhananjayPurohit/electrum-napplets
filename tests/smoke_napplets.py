@@ -30,13 +30,22 @@ def check(name, ok, detail=''):
 class FakeWallet:
     def __init__(self):
         self.paid = []
-
-    def node_info(self):
-        return {'node': {'alias': 'fake', 'pubkey': '00'}}
+        self.asked = []           # permission questions, in order
+        self.answers = [False]    # first permission question is refused, later ones allowed
 
     def pay(self, origin, bolt11, purpose, done):
         self.paid.append((origin, bolt11, purpose))
         done({'preimage': '00' * 32})
+
+    def allow(self, origin, what):
+        self.asked.append((origin, what))
+        return self.answers.pop(0) if self.answers else True
+
+    def make_invoice(self, amount_sat, memo):
+        return {'paymentRequest': f'lnbc_fake_{amount_sat}_{memo}', 'paymentHash': 'ab' * 32}
+
+    def balance(self):
+        return {'canSendSats': 1000, 'canReceiveSats': 2000}
 
 
 def read_plugin_file(name):
@@ -77,7 +86,7 @@ def main():
     wallet = FakeWallet()
     browser = NappletsWidget(
         wallet=wallet, catalog=NappletCatalog.load(read_plugin_file),
-        bridge_js=read_plugin_file('napplet_bridge.js').decode())
+        bridge_js=read_plugin_file('napplet_bridge.js').decode(), group='pizza')
     browser.resize(1400, 820)
     browser.show()  # the tab loads the shell when first shown
     os.makedirs(SCREENSHOTS, exist_ok=True)
@@ -89,11 +98,11 @@ def main():
 
     def steps():
         yield ('sleep', 3000)
-        # index by dTag, not by position: the catalog also carries the trust napplets
-        tags = [n['dTag'] for n in NappletCatalog.load(read_plugin_file).listing()['napplets']]
+        # index by dTag, not by position; only the pizza group is on screen
+        tags = [n['dTag'] for n in browser.catalog.listing('pizza')['napplets']]
         frames = browser.page.mainFrame().children()
-        check('shell created one frame per catalog napplet', len(frames) == len(tags),
-              f'{len(frames)} frames for {len(tags)} napplets')
+        check('shell shows only the pizza group (buyer + facilitator)',
+              len(frames) == len(tags) == 2, f'{len(frames)} frames for {tags}')
         if len(frames) != len(tags):
             return finish()
         by_tag = dict(zip(tags, frames))
@@ -124,6 +133,33 @@ def main():
         check('napplets see neither the shell bridge, webln nor the Qt channel',
               bridge == 'undefined/undefined/undefined', bridge)
         shot('napplets_loaded')
+
+        # receiving and balance: asked once per napplet, a refusal is not remembered
+        def call(expression):
+            return ('js', buyer, f'{expression}.then(r => window.__r = JSON.stringify(r), '
+                                 f'e => window.__r = "error: " + e.message); window.__r = null')
+
+        def result():
+            return (yield from wait_for(buyer, 'window.__r', 5000))
+        yield call('napplet.wallet.makeInvoice({amount: 21, memo: "tip"})')
+        got = yield from result()
+        check('makeInvoice refused when the user says no', got == 'error: Not allowed by the wallet user', got)
+        yield call('napplet.wallet.makeInvoice({amount: 21, memo: "tip"})')
+        got = yield from result()
+        check('makeInvoice returns an invoice once allowed', bool(got) and 'lnbc_fake_21_tip' in got, got)
+        yield call('napplet.wallet.makeInvoice({amount: 0})')
+        got = yield from result()
+        check('makeInvoice rejects a zero amount', bool(got) and got.startswith('error: Invoice amount'), got)
+        yield call('napplet.wallet.balance()')
+        got = yield from result()
+        check('balance returns send/receive capacity', got == '{"canSendSats":1000,"canReceiveSats":2000}', got)
+        yield call('napplet.wallet.balance()')
+        yield from result()
+        check('each permission asked once per napplet (refusal asked again)',
+              [w for _, w in wallet.asked] == ['create Lightning invoices that pay into this wallet'] * 2 +
+              ['see how much this wallet can send and receive over Lightning'], str(wallet.asked))
+        got = yield ('js', fac, 'typeof (window.napplet.wallet || {}).balance')
+        check('facilitator cannot ask for the balance', got == 'undefined', got)
 
         # impostor: the facilitator is not in the buyer's trust set
         yield click(buyer, '#go-menu')
@@ -166,6 +202,21 @@ def main():
         redeemed = yield from wait_for(fac, 'window.__facilitator.redeemedTotal', 30_000)
         check('facilitator redeemed the token handed over through the shell', bool(redeemed) and redeemed > 0, redeemed)
         shot('napplets_paid')
+
+        # the header switches groups: a fresh shell with only the other group's napplets
+        main = browser.page.mainFrame()
+        buttons = yield ('js', main, '[...document.querySelectorAll("#groups button")].map(b => b.dataset.group)')
+        check('header offers one button per napplet group', buttons == [g['key'] for g in browser.catalog.groups()],
+              str(buttons))
+        if 'trust' in (buttons or []):
+            yield ('js', main, 'document.querySelector(\'#groups button[data-group="trust"]\').click()')
+            yield ('sleep', 3500)
+            frames = browser.page.mainFrame().children()
+            expected = [n['dTag'] for n in browser.catalog.listing('trust')['napplets']]
+            check('switching to Trust vendors shows only its napplets',
+                  browser.group == 'trust' and len(frames) == len(expected) and len(expected) > 0,
+                  f'group {browser.group}, {len(frames)} frames for {expected}')
+            shot('napplets_trust_group')
         finish()
 
     QTimer.singleShot(150_000, lambda: (print('FAIL timeout', flush=True), app.exit(2)))

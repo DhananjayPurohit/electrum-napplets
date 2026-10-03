@@ -58,6 +58,29 @@ class _WindowWallet:
             'methods': ['getInfo', 'sendPayment'],
         }
 
+    def allow(self, origin: str, what: str) -> bool:
+        return self.window.question(
+            '\n\n'.join([_('{} asks to {}.').format(origin, what), _('Allow this until Electrum is closed?')]),
+            title=_('Napplet permission'))
+
+    def make_invoice(self, amount_sat: int, memo: str) -> dict:
+        wallet = self.window.wallet
+        if not wallet.has_lightning():
+            return {'error': _('This wallet does not have Lightning')}
+        key = wallet.create_request(amount_sat=amount_sat, message=memo, exp_delay=3600, address=None)
+        request = wallet.get_request(key)
+        self.window.receive_tab.request_list.update()
+        return {'paymentRequest': wallet.get_bolt11_invoice(request), 'paymentHash': request.rhash}
+
+    def balance(self) -> dict:
+        lnworker = self.window.wallet.lnworker
+        if not lnworker:
+            return {'error': _('This wallet does not have Lightning')}
+        return {
+            'canSendSats': int(lnworker.num_sats_can_send()),
+            'canReceiveSats': int(lnworker.num_sats_can_receive()),
+        }
+
     def pay(self, origin: str, bolt11: str, purpose: Optional[str], done: Callable[[dict], None]) -> None:
         window = self.window
         lnworker = window.wallet.lnworker
@@ -156,6 +179,7 @@ class Plugin(BasePlugin):
                 wallet=_WindowWallet(self, window),
                 catalog=self._napplets,
                 bridge_js=self.read_file('napplet_bridge.js').decode('utf-8'),
+                group=self._napplets.groups()[0]['key'],  # the first group, e.g. pizza buyer + facilitator
             )
             window.tabs.addTab(napplets, icon, _('Napplets'))
             self._tabs[window].append(napplets)

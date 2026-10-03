@@ -5,6 +5,7 @@ since a fresh wallet has no channels; everything else is real: plugin
 loading, the Browser tab, window.webln, the confirmation dialog, the reply
 to the page. Run with ./tests/run.sh electrum
 """
+import json
 import os
 import runpy
 import sys
@@ -81,15 +82,18 @@ def drive(gui):
         QTimer.singleShot(1000, lambda: napplet_pays(tabs.widget(names.index('Napplets')), 20))
 
     def napplet_pays(napplets, tries_left):
+        # the tab opens on the first group only: the pizza buyer and facilitator
+        tags = [n['dTag'] for n in napplets.catalog.listing(napplets.group)['napplets']]
         frames = napplets.page.mainFrame().children()
-        if len(frames) != 2 and tries_left:
+        if len(frames) != len(tags) and tries_left:
             return QTimer.singleShot(1000, lambda: napplet_pays(napplets, tries_left - 1))
-        if len(frames) != 2:
+        if len(frames) != len(tags) or tags != ['pizza-buyer', 'pizza-facilitator']:
             return napplets.page.runJavaScript("document.getElementById('log').textContent", 0, lambda status: (
-                check('napplet shell started both napplets', False, f'{len(frames)} frames, shell says: {status}'),
+                check('Napplets tab opens on just the pizza buyer + facilitator', False,
+                      f'{len(frames)} frames for {tags}, shell says: {status}'),
                 finish()))
-        check('napplet shell started both napplets', True)
-        buyer = frames[0]
+        check('Napplets tab opens on just the pizza buyer + facilitator', True)
+        buyer = dict(zip(tags, frames))['pizza-buyer']
         buyer.runJavaScript(
             f"napplet.wallet.pay('{bolt11}')"
             ".then(r => window.__result = 'ok:' + r.preimage, e => window.__result = 'err:' + e.message)", 0)
@@ -104,12 +108,44 @@ def drive(gui):
             dialog.grab().save(os.path.join(SCREENSHOTS, 'electrum_napplet_confirm.png'))
             dialog.button(QMessageBox.StandardButton.Yes).click()
             QTimer.singleShot(1500, lambda: buyer.runJavaScript('window.__result', 0, after_napplet))
-        QTimer.singleShot(1500, answer)
 
-    def after_napplet(result):
-        check('napplet gets the preimage back', result == 'ok:' + FAKE_PREIMAGE.hex())
-        window.grab().save(os.path.join(SCREENSHOTS, 'electrum_napplets.png'))
-        finish()
+        def after_napplet(result):
+            check('napplet gets the preimage back', result == 'ok:' + FAKE_PREIMAGE.hex())
+            window.grab().save(os.path.join(SCREENSHOTS, 'electrum_napplets.png'))
+            ask_with_permission('napplet.wallet.makeInvoice({amount: 2100, memo: "Pizza tip"})', after_invoice)
+
+        def ask_with_permission(expression, then):
+            buyer.runJavaScript(f"{expression}.then(r => window.__result = JSON.stringify(r),"
+                                " e => window.__result = 'err:' + e.message); window.__result = null", 0)
+
+            def allow():
+                dialog = QApplication.activeModalWidget()
+                if not isinstance(dialog, QMessageBox):
+                    check('napplet permission dialog shown', False)
+                    return finish()
+                check(f'permission dialog for {expression.split("(")[0]}', 'Napplet "Pizza order" asks to' in dialog.text(),
+                      dialog.text())
+                dialog.grab().save(os.path.join(SCREENSHOTS, 'electrum_napplet_permission.png'))
+                dialog.button(QMessageBox.StandardButton.Yes).click()
+                QTimer.singleShot(1000, lambda: buyer.runJavaScript('window.__result', 0, then))
+            QTimer.singleShot(1500, allow)
+
+        def after_invoice(result):
+            invoice = json.loads(result) if result and result.startswith('{') else {}
+            request = invoice.get('paymentHash') and window.wallet.get_request(invoice['paymentHash'])
+            check('makeInvoice returns a real wallet invoice (testnet lntb...)',
+                  invoice.get('paymentRequest', '').startswith('lntb') and bool(request)
+                  and request.get_amount_sat() == 2100 and request.get_message() == 'Pizza tip', result)
+            ask_with_permission('napplet.wallet.balance()', after_balance)
+
+        def after_balance(result):
+            balance = json.loads(result) if result and result.startswith('{') else {}
+            check('balance returns the wallet\'s Lightning capacity',
+                  set(balance) == {'canSendSats', 'canReceiveSats'}
+                  and all(isinstance(v, int) for v in balance.values()), result)
+            finish()
+
+        QTimer.singleShot(1500, answer)
 
     window.grab().save(os.path.join(SCREENSHOTS, 'electrum_tab.png'))
     pay_and_answer(QMessageBox.StandardButton.Yes, after_yes)
@@ -126,7 +162,7 @@ def main():
 
     def main_with_driver(gui):
         QTimer.singleShot(8000, lambda: drive(gui))
-        QTimer.singleShot(60_000, lambda: (print('FAIL timeout'), os._exit(2)))
+        QTimer.singleShot(90_000, lambda: (print('FAIL timeout'), os._exit(2)))
         return original_main(gui)
     electrum_qt.ElectrumGui.main = main_with_driver
 

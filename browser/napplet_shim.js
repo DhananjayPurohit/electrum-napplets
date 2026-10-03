@@ -88,6 +88,12 @@
     napplet.wallet = Object.freeze({
       // -> { preimage }. The wallet asks its user to confirm every payment.
       pay: (invoice) => request("wallet.pay", { invoice: String(invoice) }),
+      // -> { paymentRequest, paymentHash }: a Lightning invoice paying into the wallet.
+      //    The wallet asks its user once per session before a napplet may create invoices.
+      makeInvoice: ({ amount, memo = "" } = {}) =>
+        request("wallet.makeInvoice", { amount: Number(amount), memo: String(memo) }),
+      // -> { canSendSats, canReceiveSats } over Lightning. Also asked once per session.
+      balance: () => request("wallet.balance", {}),
     });
   }
 

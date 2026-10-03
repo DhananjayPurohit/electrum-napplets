@@ -13,6 +13,10 @@
   header h1 { margin: 0; font-size: 15px; }
   header h1 b { color: var(--accent); }
   header span { color: var(--muted); }
+  nav { margin-left: auto; display: flex; gap: 6px; }
+  nav button { background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 12px; font: inherit; cursor: pointer; }
+  nav button.on { color: var(--text); border-color: var(--accent); }
   .stage { display: flex; gap: 12px; padding: 12px; height: calc(100% - 44px - 30px); }
   .pane { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
   .label { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 11px; }
@@ -25,7 +29,8 @@
 </style>
 </head>
 <body>
-  <header><h1><b>napplets</b> in Electrum</h1><span>sandboxed apps · the wallet confirms every payment</span></header>
+  <header><h1><b>napplets</b> in Electrum</h1><span>sandboxed apps · the wallet confirms every payment</span>
+    <nav id="groups"></nav></header>
   <div class="stage" id="stage"></div>
   <footer id="log">starting…</footer>
 <script>
@@ -39,8 +44,23 @@
   if (!bridge) { log("This page only works inside the Electrum Browser."); return; }
 
   const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  const { napplets, shim } = await bridge.call("nappletList");
+  const { napplets, shim, groups, group } = await bridge.call("nappletList");
   const byWindow = new Map();   // napplet Window -> record; MessageEvent.source is unforgeable
+
+  // One group of napplets is on screen at a time; switching reloads the shell with the other group.
+  if (groups.length > 1) {
+    const nav = document.getElementById("groups");
+    for (const g of groups) {
+      const button = document.createElement("button");
+      button.textContent = `${g.title} (${g.count})`;
+      button.dataset.group = g.key;
+      if (g.key === group) button.className = "on";
+      button.addEventListener("click", () => {
+        if (g.key !== group) bridge.call("nappletSelectGroup", g.key).catch((err) => log(err.message));
+      });
+      nav.appendChild(button);
+    }
+  }
 
   function contentSecurityPolicy(meta) {
     const connect = meta.connect.length ? meta.connect.join(" ") : "'none'";
@@ -139,6 +159,23 @@
           log(`${napplet.meta.dTag}: payment not made (${err.message})`);
         }
         break;
+      case "wallet.makeInvoice":
+      case "wallet.balance": {
+        if (!granted("wallet")) return;
+        const isBalance = message.type === "wallet.balance";
+        log(`${napplet.meta.dTag} asks the wallet for ${isBalance ? "its balance" : "an invoice"}`);
+        try {
+          const result = isBalance
+            ? await bridge.call("nappletBalance", napplet.meta.dTag)
+            : await bridge.call("nappletMakeInvoice", napplet.meta.dTag,
+              String(Math.floor(Number(message.amount) || 0)), String(message.memo || ""));
+          reply({ type: `${message.type}.result`, id: message.id, result });
+        } catch (err) {
+          reply({ type: `${message.type}.result`, id: message.id, error: err.message });
+          log(`${napplet.meta.dTag}: ${err.message}`);
+        }
+        break;
+      }
       // unrecognized types are silently ignored (NIP-5D)
     }
   }

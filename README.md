@@ -67,9 +67,16 @@ Napplets are ordinary HTML/JS. Only the host side (the tab, the bridge to the wa
   - `inc`: NAP-INC topics, which carry the buyer↔facilitator messages that used to go over a BroadcastChannel.
     Payloads are forced to JSON, so no ports or other transferables cross between napplets.
   - `wallet`: Electrum's own domain. The buyer gets it; the facilitator doesn't.
-- **`wallet` domain (draft, not a published NAP).** The napplet sends
-  `{type: "wallet.pay", id, invoice}`. The shell replies `{type: "wallet.pay.result", id, result: {preimage}}`
-  or `{..., error}`. Electrum shows its confirmation dialog naming the napplet and its sha256 before anything is paid.
+- **`wallet` domain (draft, not a published NAP).** Each call is a request with an `id`, answered by
+  `<type>.result` with `result` or `error`:
+
+  | Napplet calls | Wire | Result | Electrum asks |
+  |---|---|---|---|
+  | `napplet.wallet.pay(invoice)` | `wallet.pay {invoice}` | `{preimage}` | every payment (names the napplet and its sha256) |
+  | `napplet.wallet.makeInvoice({amount, memo})` | `wallet.makeInvoice {amount, memo}` | `{paymentRequest, paymentHash}` | once per napplet, until Electrum closes |
+  | `napplet.wallet.balance()` | `wallet.balance` | `{canSendSats, canReceiveSats}` | once per napplet, until Electrum closes |
+
+  A refused permission is not remembered. Invoices made by a napplet appear in Electrum's Receive tab.
 - Napplets load from local files (`browser/napplets/`) and are labelled **local · unsigned**.
   Loading from a signed manifest on Nostr with Blossom hash checks (NIP-5A) is not implemented yet.
 
@@ -82,11 +89,13 @@ build time, and adds **Pay with Electrum** to the buyer:
 ```bash
 python3 napplets/build.py                                            # testnut (default)
 python3 napplets/build.py --mint https://cdk-a056e0f.cashu.exchange  # signet
+python3 napplets/build.py --mint https://mint.minibits.cash/Bitcoin --prices 10,11   # mainnet, 21 sat order
 ```
 
 - **testnut** marks its own invoices paid, and they aren't real. The whole flow runs, but Electrum has nothing real to pay.
 - **The signet mint** issues real signet invoices that Electrum can pay with `./run.sh --signet` and a signet Lightning channel.
-  It was down when this was built (Cloudflare error 1033).
+- **A mainnet mint** takes real sats. `--prices` sets the two pizzas' prices so a real test costs a few sats instead of 27,900.
+  The mint must allow cross-origin requests; Minibits, Coinos, Voltz and Cuba Bitcoin do. Mints are custodial, so use tiny amounts.
 
 ## Files
 
@@ -110,8 +119,11 @@ python3 napplets/build.py --mint https://cdk-a056e0f.cashu.exchange  # signet
 ```bash
 ./tests/run.sh            # browser widget vs. a local fake shop: WebLN, lightning: link, L402 fetch + page
 ./tests/run.sh electrum   # real Electrum GUI, throwaway testnet wallet: tabs, dialog, Yes/No, napplet payment
-./tests/run.sh napplets   # pizza napplets vs. the real mint: sandbox, CSP, vetting, Pay with Electrum, ecash hand-off
+./tests/run.sh napplets   # pizza napplets vs. the real mint: sandbox, CSP, permissions, vetting, Pay with Electrum, ecash
 ```
+
+The napplets test pays with a fake wallet, so it only completes with a testnut build (`python3 napplets/build.py`),
+where the mint marks invoices paid by itself.
 
 Prefix a command with `QT_QPA_PLATFORM=offscreen` to run it without opening windows. Screenshots go to `tests/screenshots/`.
 The Electrum test stubs only the final Lightning send, because a fresh wallet has no channels.

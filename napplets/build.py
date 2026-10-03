@@ -14,6 +14,7 @@ Output goes to ../browser/napplets/, where the Electrum plugin picks it up.
 
     python3 napplets/build.py                      # testnut (fake Lightning, auto-paid)
     python3 napplets/build.py --mint https://cdk-a056e0f.cashu.exchange   # signet
+    python3 napplets/build.py --mint https://mint.example --prices 10,11  # mainnet, 21 sat order
 """
 import argparse
 import hashlib
@@ -86,8 +87,26 @@ PAY_WITH_ELECTRUM = '''
 '''
 
 
-def build_buyer(mint: str, roster: str) -> str:
-    page = inline_scripts(read('order.html'), mint, roster)
+UPSTREAM_PRICES = (12500, 15400)  # Margherita, Quattro Formaggi
+
+
+def set_prices(page: str, prices: tuple[int, int]) -> str:
+    """The order total is computed from BASKET; the menu shows the same prices."""
+    if prices == UPSTREAM_PRICES:
+        return page
+    margherita, quattro = prices
+    page = replace_once(
+        page,
+        'const BASKET = { margherita: { label: "Margherita", sats: 12500 }, '
+        'quattro: { label: "Quattro Formaggi", sats: 15400 } };',
+        f'const BASKET = {{ margherita: {{ label: "Margherita", sats: {margherita} }}, '
+        f'quattro: {{ label: "Quattro Formaggi", sats: {quattro} }} }};')
+    page = replace_once(page, '<div class="sats">12,500</div>', f'<div class="sats">{margherita:,}</div>')
+    return replace_once(page, '<div class="sats">15,400</div>', f'<div class="sats">{quattro:,}</div>')
+
+
+def build_buyer(mint: str, roster: str, prices: tuple[int, int]) -> str:
+    page = set_prices(inline_scripts(read('order.html'), mint, roster), prices)
     page = replace_once(page, 'await (await fetch("./facilitator-roster.json")).json()', 'ROSTER')
     page = replace_once(
         page,
@@ -108,16 +127,25 @@ def build_facilitator(mint: str, roster: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     parser.add_argument('--mint', default='https://testnut.cashu.space')
-    mint = parser.parse_args().mint.rstrip('/')
+    parser.add_argument('--prices', default='12500,15400',
+                        help='sats for Margherita,Quattro Formaggi (small values for a real-money test)')
+    args = parser.parse_args()
+    mint = args.mint.rstrip('/')
     parts = urlsplit(mint)
     if parts.scheme != 'https' or not parts.netloc:
         raise SystemExit('--mint must be an https:// URL')
+    try:
+        prices = tuple(int(p) for p in args.prices.split(','))
+    except ValueError:
+        prices = ()
+    if len(prices) != 2 or min(prices) < 1:
+        raise SystemExit('--prices must be two positive whole numbers, e.g. 10,11')
     connect = [f'https://{parts.netloc}', f'wss://{parts.netloc}']
     roster = json.dumps(json.loads(read('facilitator-roster.json')))
 
     catalog = [
         {'dTag': 'pizza-buyer', 'title': 'Pizza order', 'file': 'pizza-buyer.html',
-         'domains': ['inc', 'wallet'], 'connect': connect, 'html': build_buyer(mint, roster)},
+         'domains': ['inc', 'wallet'], 'connect': connect, 'html': build_buyer(mint, roster, prices)},
         {'dTag': 'pizza-facilitator', 'title': 'Facilitator', 'file': 'pizza-facilitator.html',
          'domains': ['inc'], 'connect': connect, 'html': build_facilitator(mint, roster)},
     ]
@@ -125,10 +153,18 @@ def main():
     for entry in catalog:
         with open(os.path.join(OUT, entry['file']), 'w', encoding='utf-8') as f:
             f.write(entry.pop('html'))
-    with open(os.path.join(OUT, 'catalog.json'), 'w', encoding='utf-8') as f:
-        json.dump({'mint': mint, 'napplets': catalog}, f, indent=2)
+    # Replace only the pizza entries; napplets other builds added (e.g. build-trust.py) stay.
+    catalog_path = os.path.join(OUT, 'catalog.json')
+    others = []
+    if os.path.exists(catalog_path):
+        with open(catalog_path, encoding='utf-8') as f:
+            ours = {n['dTag'] for n in catalog}
+            others = [n for n in json.load(f).get('napplets', []) if n['dTag'] not in ours]
+    with open(catalog_path, 'w', encoding='utf-8') as f:
+        json.dump({'mint': mint, 'napplets': catalog + others}, f, indent=2)
         f.write('\n')
-    print(f'built {len(catalog)} napplets for {mint} into {os.path.normpath(OUT)}')
+    kept = f', kept {len(others)} other napplets in the catalog' if others else ''
+    print(f'built {len(catalog)} napplets for {mint} (order total {sum(prices):,} sats){kept} into {os.path.normpath(OUT)}')
 
 
 if __name__ == '__main__':
