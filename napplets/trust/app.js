@@ -35,6 +35,20 @@
   const hexToBytes = (h) => Uint8Array.from(h.match(/../g) || [], (b) => parseInt(b, 16));
   const short = (s, n = 8) => (s ? String(s).slice(0, n) + "…" : "—");
   const sats = (n) => Number(n).toLocaleString("en-US");
+  // A refusal is the verifier working correctly, but on stage the pane must also
+  // say what to do next. Every reason verifyProof can return has exactly one
+  // remedy; the reason string is the bundle's own, matched here verbatim.
+  function refusalAdvice(reason) {
+    const r = String(reason || "");
+    if (r.includes("order expired")) return "press “Open this order to my pinned set” again — it mints a fresh order";
+    if (r.includes("key image already used")) return "this order was already resolved — open a fresh order and quote again";
+    if (r.includes("proof's pinned set does not match")) return "that pane is pinned to a different set version — rebuild both panes: python3 napplets/build-trust.py --only-trust";
+    if (r.includes("outside the pinned trust set")) return "that vendor is not a member of your set";
+    if (r.includes("LSAG signature verification failed")) return "the proof does not verify against this exact order";
+    if (r.includes("duplicate keys")) return "the ring is malformed (duplicate keys)";
+    if (r.includes("below minimum")) return "the ring is smaller than the minimum you accept";
+    return "check that both panes were built from the same roster";
+  }
   // A host that never answers must fail loudly, not hang: on stage a stuck
   // promise looks identical to a slow one, and the demo has 3 minutes.
   const withTimeout = (promise, ms, message) => Promise.race([
@@ -56,6 +70,12 @@
   const VENUE_SKU = CONFIG.sku || "sim-1001";
   const VENUE_PRICE = CONFIG.venuePriceSats || 676;
   const MARGIN_CAP = CONFIG.marginCap ?? 0.10;
+  // The verifier refuses any order whose `expiresAt` has passed, so the window has
+  // to survive a rehearsal-to-stage gap. Measured 2026-10-03: a pane left open for
+  // a rehearsal refused the proof with "order expired at …" once the demo started.
+  // The window is freshness policy, not the security boundary — the pin, the ring
+  // and the one-use-per-order key image are.
+  const ORDER_WINDOW_MIN = CONFIG.orderWindowMin ?? 240;
   const HUB = CONFIG.hub || null;
   const HUB_HTTP = CONFIG.hubHttp || null;
 
@@ -88,6 +108,7 @@
     roster: { setId: CONFIG.roster.setId, vendors: VENDORS.map((v) => ({ name: v.name, npub: v.npub })) },
     transport: null, peers: [], order: null, pin: PIN.member || CONFIG.pin,
     sent: [], received: [], proof: null, proofs: [], verdicts: {},
+    answered: {}, alreadyAnswered: null,
     errors: [],
     menu: null, menuError: null, venueName: null, item: null,
     announcement: null,
@@ -226,12 +247,18 @@
     const chosen = item || state.item || defaultItem();
     state.item = chosen;
     await venueOrder(transport, null);
+    // Every open mints a NEW order id. The verifier's replay guard is keyed on
+    // (orderId, setId), so reusing an id makes a second run look like a replay of
+    // the first and gets refused — "key image already used for this order". A
+    // fresh id per open gives each attempt its own scope, so the demo can be run
+    // again, and again, in the same session.
+    const runOrdinal = (window.__trustRun = (window.__trustRun || 0) + 1);
     const order = {
-      orderId: ORDER_ID,
+      orderId: `${ORDER_ID}-${runOrdinal.toString(36)}`,
       amount: String(state.venue.amountSats || chosen.priceSats),
       currency: "sats",
       clientId: ME.npub,
-      expiresAt: new Date(Date.now() + 15 * 60e3).toISOString(),
+      expiresAt: new Date(Date.now() + ORDER_WINDOW_MIN * 60e3).toISOString(),
       pin: PIN,
       venue: {
         name: state.venueName || "Burgermeister Mehringdamm",
@@ -282,6 +309,15 @@
     if (ME.role !== "customer") return;
     const { proof, quote } = envelope.body;
     // verify against OUR pinned set — never theirs
+    // A transport may hand us the same proof twice (inc mirrored onto the hub, or a
+    // retry). The envelope-id guard catches most of it; a byte-identical proof under a
+    // new id is still the same resolution attempt, so treat it as a duplicate rather
+    // than letting the replay guard refuse it and alarm the operator.
+    const fingerprint = proof ? `${JSON.stringify(proof.ring)}|${JSON.stringify(proof.signature)}|${quote && quote.sats}` : null;
+    if (fingerprint && state.proofs.some((p) => p.fingerprint === fingerprint)) {
+      log(`ignored a repeat delivery of ${short(envelope.from, 14)}'s proof (identical signature)`);
+      return render();
+    }
     const seen = T.createSeenSet();
     if (!proof) {
       const verdict = { ok: false, reason: "no ring proof attached — nothing to verify against your pinned set" };
@@ -305,7 +341,7 @@
       { label: "key image is fresh — one use per order", ok: verdict.ok },
       { label: `quote is within your ${Math.round(MARGIN_CAP * 100)}% ceiling`, ok: Number(quote.sats) <= Math.ceil(VENUE_PRICE * (1 + MARGIN_CAP)) },
     ];
-    state.proofs.push({ from: envelope.from, proof, quote, verdict, ringHex, checks });
+    state.proofs.push({ from: envelope.from, proof, quote, verdict, ringHex, checks, fingerprint });
     state.verdicts[envelope.from] = { ok: verdict.ok, reason: verdict.reason || null, ringHex };
     if (!verdict.ok) log(`REFUSED ${short(envelope.from, 14)}: ${verdict.reason}`);
     render();
@@ -339,7 +375,18 @@
   function proveAndQuote(transport) {
     const order = state.order;
     if (!order || !AM_MEMBER) return;
+    // ONE answer per order. The verifier's guard is one key image per order, and the
+    // key image is a property of the member, not of the order — so a second proof for
+    // the same order is refused by design. A second press therefore must not emit a
+    // doomed proof; it says what to do instead (the customer opens a fresh order).
+    if (state.answered[order.orderId]) {
+      state.alreadyAnswered = order.orderId;
+      log(`already quoted ${order.orderId} — the customer opens a fresh order to run again`);
+      render();
+      return;
+    }
     state.refused = null;
+    state.alreadyAnswered = null;
     try {
       const signerKey = { secretKey: hexToBytes(ME.secretKey), publicKey: hexToBytes(ME.publicKey) };
       const ringIndices = SET.members.map((_, i) => i);      // the whole pinned set
@@ -353,6 +400,7 @@
         invoiceKind: state.venue.invoice ? "venue-bolt11" : "STAND-IN",
       };
       state.quote = quote;
+      state.answered[order.orderId] = true;
       transport.send("quote", { proof, quote }, order.clientId);
       render();
     } catch (err) {
@@ -493,6 +541,16 @@
     const root = $("#app");
     root.innerHTML = "";
     root.appendChild(stateStrip(currentState()));
+    // A refused proof is the one thing that must never be quiet: show the bundle's
+    // own reason at the top of the pane, with the single action that clears it.
+    const refused = state.proofs.filter((p) => !p.verdict.ok);
+    for (const r of refused) {
+      const banner = card(`Refused — ${short(r.from, 22)}`, r.quote ? `${sats(r.quote.sats)} sats offered` : "");
+      banner.classList.add("bad");
+      banner.appendChild(el("div", "err", r.verdict.reason || "invalid proof"));
+      banner.appendChild(el("div", "note", refusalAdvice(r.verdict.reason)));
+      root.appendChild(banner);
+    }
 
     const who = el("div", "who");
     who.appendChild(el("span", "pill", `customer · ${ME.name}`));
@@ -550,7 +608,13 @@
       row.appendChild(el("span", "tag " + (p.verdict.ok ? "ok" : "no"), p.verdict.ok ? "verified" : "refused"));
       row.appendChild(el("span", "mono", `${sats(p.quote.sats)} sats`));
       rows.appendChild(row);
-      if (!p.verdict.ok) row.appendChild(el("div", "note", p.verdict.reason || ""));
+      if (!p.verdict.ok) {
+        row.appendChild(el("div", "note", p.verdict.reason || ""));
+        const theirs = p.proof && p.proof.pin && p.proof.pin.contentHash;
+        if (theirs && theirs !== PIN.contentHash) {
+          row.appendChild(el("div", "err", `their set ${short(theirs, 10)} ≠ yours ${short(PIN.contentHash, 10)}`));
+        }
+      }
     }
     quotes.appendChild(rows);
     const best = bestQuote();
@@ -611,6 +675,11 @@
         const button = el("button", "cta", "Prove I'm in the set & quote");
         button.addEventListener("click", () => proveAndQuote(transport));
         order.appendChild(button);
+        if (state.alreadyAnswered === state.order.orderId) {
+          order.appendChild(el("div", "note",
+            "already answered this order — the verifier accepts one proof per member per order. "
+            + "Nothing to press: the customer opens a fresh order to run the demo again."));
+        }
       } else {
         order.appendChild(el("div", "note", "not in this customer's set — nothing to resolve, so this vendor never answers"));
       }

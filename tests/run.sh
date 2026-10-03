@@ -11,7 +11,16 @@ python="$here/.venv/bin/python"
 case "${1:-}" in
     electrum) ;;
     napplets) exec "$python" "$here/tests/smoke_napplets.py" ;;
-    trust) exec "$python" "$here/tests/smoke_trust.py" ;;
+    trust)
+        # The trust flow is staged as exactly two panes, and the shell stages every
+        # napplet the catalog lists — so build the two-pane catalog for the run, then
+        # put the default one back so the pizza napplets are still there afterwards.
+        "$python" "$here/napplets/build-trust.py" --only-trust > /dev/null
+        rc=0
+        "$python" "$here/tests/smoke_trust.py" || rc=$?
+        "$python" "$here/napplets/build-trust.py" > /dev/null
+        exit "$rc"
+        ;;
     *) exec "$python" "$here/tests/smoke_webview.py" ;;
 esac
 

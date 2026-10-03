@@ -123,10 +123,33 @@ run it. (`POST /mode {"mode":"demo"}` puts the bridge back.)
 
 ```bash
 python3 tests/smoke_bridge.py     # the bridge answers, demo mode, order lifecycle
-./tests/run.sh trust              # the whole in-host flow, 37 checks
+./tests/run.sh trust              # the whole in-host flow
 node tests/phone/trust-phone-flow.cjs
 pkill -f "[t]rust/hub.py"         # a leftover hub holds port 8787 and serves stale files
 ```
+
+## If the customer's pane says "Refused"
+
+A refusal is the verifier working — it is the whole point of the demo — but the
+pane now shows the verifier's own reason and the one action that clears it. The
+reason strings are the pinned bundle's, verbatim:
+
+| What the pane says | What it means | What to do |
+|---|---|---|
+| `key image already used for this order` | That member already answered **this** order. The key image belongs to the member, not the order, so one proof per member per order is all the verifier accepts. | Nothing to fix: the customer presses **Open this order to my pinned set** again. A fresh order id is a fresh scope, and the flow runs again in the same session. |
+| `order expired at …` | The order was opened more than the validity window ago. | Open a fresh order. The window is 240 min (`CONFIG.orderWindowMin`); it exists so a rehearsal-to-stage gap cannot expire the order mid-demo. |
+| `proof's pinned set does not match the verifier's pin` | The two panes are pinned to **different set versions** — almost always one pane left over from an older build. | Rebuild both panes and reload: `python3 napplets/build-trust.py --only-trust`. The pane also prints `their set … ≠ yours …` so this is visible at a glance. |
+| `ring contains a key outside the pinned trust set` | The prover is not a member of the customer's set (this is Malice, refused). | Expected. Malice is the villain; the pane showing this is the demo working. |
+| `LSAG signature verification failed` | The proof does not verify against **this** order — usually a proof from an earlier order. | Open a fresh order and quote again. |
+| `ring size N is below minimum 4` / `duplicate keys` | Malformed or too-small ring. | Rebuild the panes; the roster must hold the four keys. |
+
+Two rules that prevent almost every refusal:
+
+1. **The facilitator's button is one answer per order.** Pressing it twice is safe
+   now — the pane says "already answered this order" and emits nothing — but the
+   customer must open a fresh order to run the flow again.
+2. **Start the demo from a fresh order**, not from a pane that was left open
+   during the previous rehearsal. One click on the customer's button is the reset.
 
 ## Known gaps, stated plainly
 

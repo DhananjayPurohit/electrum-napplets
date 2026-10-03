@@ -152,7 +152,7 @@ def main():
         # the order opens to the set
         yield js(charlie, '__trust.openOrder()')
         got = yield from wait_for(alice, 'window.__trust.order && window.__trust.order.orderId')
-        check('the order reached the facilitator through the shell', got == 'BM-4471', str(got))
+        check('the order reached the facilitator through the shell', str(got).startswith('BM-4471'), str(got))
         amount = yield js(alice, 'String(__trust.order.amount)')
         check('the order carries the venue price from the bridge fixture', amount == '676', amount)
         shot('trust_1_order_open')
@@ -196,6 +196,38 @@ def main():
         vendor = yield from wait_for(alice, 'window.__trust.announcement', 25_000)
         check('the facilitator pane shows the announcement too', bool(vendor), str(vendor))
         shot('trust_3_purchased')
+
+        # One answer per member per order, and the demo must be re-runnable. The
+        # verifier's guard is one key image per order; the key image belongs to the
+        # member, so a second proof for the same order is refused by design. The pane
+        # answers once and says so if pressed again; a fresh open mints a new order id
+        # — its own replay scope — so the whole flow runs again in one session.
+        before_press = yield js(charlie, 'window.__trust.proofs.length')
+        yield js(alice, '__trust.proveAndQuote()')
+        yield ('sleep', 1200)
+        after_press = yield js(charlie, 'window.__trust.proofs.length')
+        answered = yield js(alice, 'window.__trust.alreadyAnswered')
+        check('a second press emits no doomed proof',
+              after_press == before_press and bool(answered), f'{before_press} -> {after_press}, alreadyAnswered={answered}')
+
+        # Bypass that guard to prove the verifier still refuses a real duplicate, and
+        # that the customer pane shows the reason with the action that clears it.
+        yield js(alice, '__trust.answered = {}; __trust.proveAndQuote()')
+        yield from wait_for(charlie, f'window.__trust.proofs.length > {after_press}')
+        replay = yield js(charlie, 'JSON.stringify(__trust.proofs[__trust.proofs.length - 1].verdict)')
+        check('the verifier still refuses a genuine duplicate proof',
+              'key image already used' in replay, replay)
+        banner = yield js(charlie, 'JSON.stringify((document.querySelector(".card.bad") || {}).textContent || "")')
+        check('the refusal is a banner that names the reason and the remedy',
+              'key image already used' in banner and 'open a fresh order' in banner, banner[:70])
+
+        yield js(charlie, '__trust.openOrder()')
+        yield ('sleep', 1500)
+        yield js(alice, '__trust.proveAndQuote()')
+        yield from wait_for(charlie, f'window.__trust.proofs.length > {after_press + 1}')
+        fresh = yield js(charlie, 'JSON.stringify(__trust.proofs[__trust.proofs.length - 1].verdict)')
+        check('re-opening mints a fresh order and the proof verifies again',
+              '"ok":true' in fresh, fresh)
 
         state = hub.messages
         check('the hub relayed the same conversation (phone path)', len(state) > 0, f'{len(state)} messages')
