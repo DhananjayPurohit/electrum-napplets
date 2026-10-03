@@ -182,9 +182,12 @@ def main() -> int:
     except FileNotFoundError:
         catalog = {'mint': 'https://testnut.cashu.space', 'napplets': []}
     catalog = ensure_pizza_entries(catalog)
-    catalog['napplets'] = [n for n in catalog['napplets'] if not n['dTag'].startswith('trust-')]
+    others = [n for n in catalog['napplets'] if not n['dTag'].startswith('trust-')]
     if args.only_trust:
-        catalog['napplets'] = []          # two columns on stage, nothing else
+        others = []                       # two columns on stage, nothing else
+    # The trust group goes FIRST: the shell shows one group at a time, and the
+    # first one is what opens, so this is what the audience sees first.
+    catalog['napplets'] = []
 
     written = []
     titles = dict(CATALOG)
@@ -202,6 +205,8 @@ def main() -> int:
             'domains': ['inc', 'wallet'] if role == 'customer' else ['inc'],
             'connect': connect,
         })
+
+    catalog['napplets'] += others          # the pizza group stays available, second
 
     with open(catalog_path, 'w', encoding='utf-8') as f:
         json.dump(catalog, f, indent=2)

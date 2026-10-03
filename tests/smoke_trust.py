@@ -114,13 +114,14 @@ def main():
         check('the trust flow contributes exactly two panes: customer + facilitator',
               trust_tags == ['trust-charlie', 'trust-alice'], str(tags))
         frames = browser.page.mainFrame().children()
-        check('one frame per catalog entry, and no per-vendor pane',
-              len(frames) == len(tags) and len(trust_tags) == 2,
-              f'{len(frames)} frames for {tags}')
-        if len(frames) != len(tags):
+        # main shows one GROUP at a time, and the trust group is first in the
+        # catalog, so exactly the two trust panes are on screen — no more columns.
+        check('exactly two panes on screen: customer + facilitator, nothing else',
+              len(frames) == 2 and len(trust_tags) == 2,
+              f'{len(frames)} frames, catalog {tags}')
+        if len(frames) != 2:
             return finish()
-        by_tag = dict(zip(tags, frames))
-        charlie, alice = by_tag['trust-charlie'], by_tag['trust-alice']
+        charlie, alice = frames
 
         for tag, frame in (('customer', charlie), ('facilitator', alice)):
             ready = yield from wait_for(frame, 'window.__trust && window.__trust.ready === true')

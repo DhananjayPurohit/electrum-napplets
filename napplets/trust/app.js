@@ -89,6 +89,7 @@
     transport: null, peers: [], order: null, pin: PIN.member || CONFIG.pin,
     sent: [], received: [], proof: null, proofs: [], verdicts: {},
     errors: [],
+    menu: null, menuError: null, venueName: null, item: null,
     announcement: null,
     quotes: [], accepted: null, paid: null, walletError: null,
     venue: { orderId: null, status: null, invoice: null, venueOrderNumber: null, rail: null },
@@ -218,19 +219,56 @@
   }
 
   // ── customer ───────────────────────────────────────────────────────────────
-  function openOrder(transport) {
+  // The item and its price come from the venue API's own menu, and the fiat order
+  // is created FIRST so the invoice the customer pays is the venue's real one —
+  // the same call that places the order. No placeholder content, no stand-in.
+  async function openOrder(transport, item) {
+    const chosen = item || state.item || defaultItem();
+    state.item = chosen;
+    await venueOrder(transport, null);
     const order = {
       orderId: ORDER_ID,
-      amount: String(VENUE_PRICE),
+      amount: String(state.venue.amountSats || chosen.priceSats),
       currency: "sats",
       clientId: ME.npub,
       expiresAt: new Date(Date.now() + 15 * 60e3).toISOString(),
       pin: PIN,
-      venue: CONFIG.venue || { name: "Burgermeister Mehringdamm", table: "8613S3X", sku: VENUE_SKU },
+      venue: {
+        name: state.venueName || "Burgermeister Mehringdamm",
+        table: (CONFIG.venue && CONFIG.venue.table) || "8613S3X",
+        sku: chosen.sku, item: chosen.name,
+      },
+      invoice: state.venue.invoice || null,
       marginCap: MARGIN_CAP,
     };
     state.order = order;
     transport.send("order.open", { order, pin: PIN, trustSet: SET, setMembers: VENDORS.map((v) => v.npub) });
+    render();
+  }
+
+  function defaultItem() {
+    const items = (state.menu && state.menu.items) || [];
+    return items.find((i) => String(i.category || "").toLowerCase() === "burger") || items[0]
+      || { sku: VENUE_SKU, name: "Burger", priceSats: VENUE_PRICE, price: null };
+  }
+
+  // The menu the pane shows is the venue API's own — the same source the fiat
+  // order is placed against, so what the audience reads is what gets ordered.
+  async function loadMenu() {
+    if (!HUB_HTTP) return;
+    try {
+      const res = await fetch(`${HUB_HTTP}/provider/menu`);
+      const json = await res.json();
+      if (json && json.items && json.items.length) {
+        state.menu = { venue: json.venue || null, items: json.items,
+                       mode: json.mode || null, source: json.source || "bridge" };
+        state.venueName = (json.venue && json.venue.name) || state.venueName;
+      } else {
+        state.menuError = json && json.error ? json.error : "empty menu";
+      }
+    } catch (err) {
+      state.menuError = err.message;
+    }
     render();
   }
 
@@ -306,7 +344,8 @@
       const signerKey = { secretKey: hexToBytes(ME.secretKey), publicKey: hexToBytes(ME.publicKey) };
       const ringIndices = SET.members.map((_, i) => i);      // the whole pinned set
       const proof = T.prove(SET, signerKey, ringIndices, order);
-      const quoteSats = VENUE_PRICE + Math.max(1, Math.round(VENUE_PRICE * 0.08));
+      const base = Number(order.amount) || VENUE_PRICE;      // the API's price for this item
+      const quoteSats = base + Math.max(1, Math.round(base * 0.08));
       state.proof = proof;
       const quote = {
         npub: ME.npub, name: ME.name, sats: quoteSats,
@@ -329,7 +368,10 @@
   // order number appears.
   async function venueOrder(transport, quote) {
     const url = `${CONFIG.hubHttp || ""}/provider/orders`;
-    const payload = { venue: CONFIG.venue?.table || "8613S3X", items: [{ sku: VENUE_SKU, qty: 1 }] };
+    const payload = {
+      venue: (CONFIG.venue && CONFIG.venue.table) || "8613S3X",
+      items: [{ sku: (state.item && state.item.sku) || VENUE_SKU, qty: 1 }],
+    };
     try {
       const res = await fetch(url, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
@@ -343,6 +385,7 @@
         amountSats: json.amountSats ?? null, rail: json.rail || null,
         venueOrderNumber: json.venueOrderNumber || null, source: json.source || "bridge",
       };
+      if (state.order) state.order.invoice = state.venue.invoice;
     } catch (err) {
       state.venue = { orderId: null, status: "unavailable", invoice: null, rail: null,
                       venueOrderNumber: null, error: err.message };
@@ -403,16 +446,18 @@
   // Exactly ONE placer (the customer's UI) so live mode can never open two
   // kitchen tickets for one payment.
   async function settleVenue() {
-    if (state.venue.orderId) return;
-    await venueOrder(transport, state.accepted && state.accepted.quote);
-    render();
+    if (!state.venue.orderId) {          // normally created when the order opened
+      await venueOrder(transport, state.accepted && state.accepted.quote);
+      render();
+    }
     for (let i = 0; i < 8 && !state.venue.venueOrderNumber; i++) {
       await new Promise((r) => setTimeout(r, 1500));
       await pollVenue(transport);
       if (state.venue.venueOrderNumber) break;
     }
+    const what = (state.item && state.item.name) || "Burger";
     state.announcement = state.venue.venueOrderNumber
-      ? `Burger purchased successfully ✓ venue order ${state.venue.venueOrderNumber}`
+      ? `${what} purchased successfully ✓ venue order ${state.venue.venueOrderNumber}`
       : `Venue order ${state.venue.orderId || "?"} · ${state.venue.status}`;
     transport.send("announce", { text: state.announcement, venue: state.venue }, "*");
     render();
@@ -454,14 +499,35 @@
     who.appendChild(el("span", "mono", short(ME.npub, 20)));
     root.appendChild(who);
 
-    const venue = card("Burgermeister Mehringdamm · Tafel 1",
-      `${CONFIG.venue?.sku || VENUE_SKU} · venue price ${sats(VENUE_PRICE)} sats · ceiling +${Math.round(MARGIN_CAP * 100)}%`);
+    const venue = card(`${state.venueName || "Burgermeister Mehringdamm"} · Tafel 1`,
+      `menu read live from the venue API${state.menu ? ` (${state.menu.mode || "?"} · ${state.menu.source})` : ""}`
+      + ` · ceiling +${Math.round(MARGIN_CAP * 100)}%`);
+    if (state.menuError) venue.appendChild(el("div", "err", `menu: ${state.menuError}`));
+    if (state.menu) {
+      const rows = el("div", "rows");
+      for (const it of state.menu.items.slice(0, 6)) {
+        const row = el("div", "row" + (state.item && state.item.sku === it.sku ? " best" : ""));
+        row.appendChild(el("span", "grow", `${it.name}${it.category ? " · " + it.category : ""}`));
+        if (it.price) row.appendChild(el("span", "mono", `€${it.price}`));
+        row.appendChild(el("span", "mono", `${sats(it.priceSats)} sats`));
+        row.addEventListener("click", () => { state.item = it; render(); });
+        rows.appendChild(row);
+      }
+      venue.appendChild(rows);
+    }
+    if (state.item) {
+      venue.appendChild(el("div", "mono", `chosen: ${state.item.name} · ${sats(state.item.priceSats)} sats`));
+    }
     if (!state.order) {
       const button = el("button", "cta", "Open this order to my pinned set");
       button.addEventListener("click", () => openOrder(transport));
       venue.appendChild(button);
     } else {
-      venue.appendChild(el("div", "mono", `order #${state.order.orderId} · you chose a set, not a vendor`));
+      venue.appendChild(el("div", "mono",
+        `order #${state.order.orderId} · ${sats(state.order.amount)} sats · you chose a set, not a vendor`));
+      if (state.order.invoice) {
+        venue.appendChild(el("div", "mono", `venue invoice ${short(state.order.invoice, 22)}…`));
+      }
     }
     root.appendChild(venue);
 
@@ -537,7 +603,9 @@
 
     const order = card("Open order", state.order ? `#${state.order.orderId} · invited by the set, not chosen by the customer` : "waiting for a customer");
     if (state.order) {
-      order.appendChild(el("div", "mono", `venue price ${sats(VENUE_PRICE)} sats · ceiling +${Math.round(MARGIN_CAP * 100)}%`));
+      order.appendChild(el("div", "mono",
+        `${state.order.venue && state.order.venue.item ? state.order.venue.item + " · " : ""}`
+        + `venue price ${sats(state.order.amount)} sats · ceiling +${Math.round(MARGIN_CAP * 100)}%`));
       if (AM_MEMBER) {
         // one button, one message: the quote carries the proof
         const button = el("button", "cta", "Prove I'm in the set & quote");
@@ -575,6 +643,7 @@
   }
 
   const transport = createTransport();
+  if (ME.role === "customer") void loadMenu();
   render();
 
   // test hooks: real state, and the two entry points the smoke tests click
