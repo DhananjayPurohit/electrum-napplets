@@ -158,6 +158,8 @@ def main() -> int:
     parser.add_argument('--hub', default='ws://127.0.0.1:8787',
                         help='npub-addressed WebSocket hub (the phone / cross-device transport)')
     parser.add_argument('--no-hub', action='store_true', help='in-host NAP-INC only')
+    parser.add_argument('--only-trust', action='store_true',
+                        help='catalog ONLY the two trust panes (the stage build: two columns, nothing else)')
     parser.add_argument('--connect-extra', action='append', default=[],
                         help='extra connect-src origin, e.g. http://192.168.1.5:8788 (repeatable)')
     parser.add_argument('--out-dir', default=OUT)
@@ -181,6 +183,8 @@ def main() -> int:
         catalog = {'mint': 'https://testnut.cashu.space', 'napplets': []}
     catalog = ensure_pizza_entries(catalog)
     catalog['napplets'] = [n for n in catalog['napplets'] if not n['dTag'].startswith('trust-')]
+    if args.only_trust:
+        catalog['napplets'] = []          # two columns on stage, nothing else
 
     written = []
     titles = dict(CATALOG)

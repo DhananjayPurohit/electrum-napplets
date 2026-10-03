@@ -108,13 +108,19 @@ def main():
         yield ('sleep', 3500)
 
         # exactly two panes: the customer and the facilitator. Nothing else.
-        check('the catalog is the customer and one facilitator',
-              tags == ['trust-charlie', 'trust-alice'], str(tags))
+        # the trust flow is TWO panes: the customer and one facilitator. The other
+        # vendors stay in the pinned set as keys; they must not become columns.
+        trust_tags = [t for t in tags if t.startswith('trust-')]
+        check('the trust flow contributes exactly two panes: customer + facilitator',
+              trust_tags == ['trust-charlie', 'trust-alice'], str(tags))
         frames = browser.page.mainFrame().children()
-        check('the shell shows exactly two panes (no clutter)', len(frames) == 2, f'{len(frames)} panes')
-        if len(frames) != 2:
+        check('one frame per catalog entry, and no per-vendor pane',
+              len(frames) == len(tags) and len(trust_tags) == 2,
+              f'{len(frames)} frames for {tags}')
+        if len(frames) != len(tags):
             return finish()
-        charlie, alice = frames
+        by_tag = dict(zip(tags, frames))
+        charlie, alice = by_tag['trust-charlie'], by_tag['trust-alice']
 
         for tag, frame in (('customer', charlie), ('facilitator', alice)):
             ready = yield from wait_for(frame, 'window.__trust && window.__trust.ready === true')
