@@ -59,6 +59,17 @@
       : injected + html;
   }
 
+  // Payloads are re-serialized so only JSON crosses between napplets (no
+  // transferables such as MessagePorts that would bypass the shell).
+  const asJson = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
+
+  // Register the listener BEFORE the napplets are created. A napplet posts
+  // shell.ready as soon as its inline script runs; while the shell is still
+  // building the remaining frames there is no listener yet, that message is
+  // delivered to nobody, and the napplet then queues every later request
+  // forever — supports() reports false and a payment request never resolves.
+  window.addEventListener("message", onShellMessage);
+
   for (const meta of napplets) {
     const { html } = await bridge.call("nappletSource", meta.dTag);
     const pane = document.createElement("div");
@@ -77,11 +88,7 @@
   }
   log(`${napplets.length} napplets loaded`);
 
-  // Payloads are re-serialized so only JSON crosses between napplets (no
-  // transferables such as MessagePorts that would bypass the shell).
-  const asJson = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
-
-  window.addEventListener("message", async (event) => {
+  async function onShellMessage(event) {
     const napplet = byWindow.get(event.source);
     if (!napplet) return;
     const message = event.data;
@@ -134,7 +141,7 @@
         break;
       // unrecognized types are silently ignored (NIP-5D)
     }
-  });
+  }
 })();
 </script>
 </body>
