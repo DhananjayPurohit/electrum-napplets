@@ -11,6 +11,7 @@ python="$here/.venv/bin/python"
 case "${1:-}" in
     electrum) ;;
     napplets) exec "$python" "$here/tests/smoke_napplets.py" ;;
+    trust) exec "$python" "$here/tests/smoke_trust.py" ;;
     *) exec "$python" "$here/tests/smoke_webview.py" ;;
 esac
 

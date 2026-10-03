@@ -89,11 +89,18 @@ def main():
 
     def steps():
         yield ('sleep', 3000)
+        # index by dTag, not by position: the catalog also carries the trust napplets
+        tags = [n['dTag'] for n in NappletCatalog.load(read_plugin_file).listing()['napplets']]
         frames = browser.page.mainFrame().children()
-        check('shell created two napplet frames', len(frames) == 2, f'{len(frames)} frames')
-        if len(frames) != 2:
+        check('shell created one frame per catalog napplet', len(frames) == len(tags),
+              f'{len(frames)} frames for {len(tags)} napplets')
+        if len(frames) != len(tags):
             return finish()
-        buyer, fac = frames
+        by_tag = dict(zip(tags, frames))
+        if 'pizza-buyer' not in by_tag or 'pizza-facilitator' not in by_tag:
+            check('pizza napplets are in the catalog', False, str(tags))
+            return finish()
+        buyer, fac = by_tag['pizza-buyer'], by_tag['pizza-facilitator']
         ok = yield from wait_for(buyer, 'typeof window.__buyer === "object" && window.__buyer.ready === true')
         check('buyer napplet loaded its roster', bool(ok))
 

@@ -25,6 +25,59 @@
         "https://cdk-a056e0f.cashu.exchange",
         "wss://cdk-a056e0f.cashu.exchange"
       ]
+    },
+    {
+      "dTag": "trust-charlie",
+      "title": "The customer",
+      "file": "trust-charlie.html",
+      "domains": [
+        "inc",
+        "wallet"
+      ],
+      "connect": [
+        "http://127.0.0.1:8787",
+        "ws://127.0.0.1:8787",
+        "wss://127.0.0.1:8787"
+      ]
+    },
+    {
+      "dTag": "trust-alice",
+      "title": "Vendor \u2014 in the pinned set",
+      "file": "trust-alice.html",
+      "domains": [
+        "inc"
+      ],
+      "connect": [
+        "http://127.0.0.1:8787",
+        "ws://127.0.0.1:8787",
+        "wss://127.0.0.1:8787"
+      ]
+    },
+    {
+      "dTag": "trust-bob",
+      "title": "Vendor \u2014 in the pinned set",
+      "file": "trust-bob.html",
+      "domains": [
+        "inc"
+      ],
+      "connect": [
+        "http://127.0.0.1:8787",
+        "ws://127.0.0.1:8787",
+        "wss://127.0.0.1:8787"
+      ]
+    },
+    {
+      "dTag": "trust-malice",
+      "title": "Vendor \u2014 NOT in the pinned set (the abuse case)",
+      "file": "trust-malice.html",
+      "domains": [
+        "inc"
+      ],
+      "connect": [
+        "http://127.0.0.1:8787",
+        "ws://127.0.0.1:8787",
+        "wss://127.0.0.1:8787"
+      ]
     }
   ]
 }
